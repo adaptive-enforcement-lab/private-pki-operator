@@ -1,0 +1,43 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-cert-sign-usage-requires-isca
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: Certificates with the cert sign key usage must have isCA: true. Granting cert sign to a non-CA certificate is a PKI misuse."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: cert-sign-usage-requires-isca
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.usages || [] {{ "}}" }}"
+            operator: AnyIn
+            value:
+              - cert sign
+      validate:
+        message: >
+          Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' has the 'cert sign' key usage
+          but isCA is not true. The cert sign usage is reserved for CA certificates.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+                operator: NotEquals
+                value: true
+{{- end }}

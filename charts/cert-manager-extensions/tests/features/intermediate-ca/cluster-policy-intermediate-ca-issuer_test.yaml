@@ -1,0 +1,165 @@
+suite: ClusterPolicy / pki-intermediate-ca-issuer
+templates:
+  - features/intermediate-ca/cluster-policy-intermediate-ca-issuer.yaml
+tests:
+  - it: renders a ClusterPolicy
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterPolicy
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pki-intermediate-ca-issuer
+  - it: is in Enforce mode
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Enforce
+  - it: runs background scans
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.background
+          value: true
+  - it: has all four rules in order
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].name
+          value: namespace-ca-must-use-platform-issuer
+      - equal:
+          path: spec.rules[1].name
+          value: product-level-ca-must-use-namespace-issuer
+      - equal:
+          path: spec.rules[2].name
+          value: leaf-must-use-deepest-namespace-ca
+      - equal:
+          path: spec.rules[3].name
+          value: unmanaged-namespace-ca-must-use-platform-issuer
+  - it: namespace-ca rule matches pki-managed namespaces and the sanctioned name only
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchLabels["pki-managed"]
+          value: "true"
+      - equal:
+          path: spec.rules[0].preconditions.all[1].operator
+          value: Equals
+  - it: namespace-ca rule denies unless ClusterIssuer/private-intermediate-ca
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[0].value
+          value: ClusterIssuer
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[1].value
+          value: private-intermediate-ca
+  - it: product-level-ca rule matches everything except the sanctioned name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[1].match.any[0].resources.namespaceSelector.matchLabels["pki-managed"]
+          value: "true"
+      - equal:
+          path: spec.rules[1].preconditions.all[1].operator
+          value: NotEquals
+  - it: product-level-ca rule denies unless Issuer/<namespace>-ca
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[1].validate.deny.conditions.any[0].value
+          value: Issuer
+      - equal:
+          path: spec.rules[1].validate.deny.conditions.any[1].key
+          value: "{{ request.object.spec.issuerRef.name }}"
+      - equal:
+          path: spec.rules[1].validate.deny.conditions.any[1].value
+          value: "{{ request.namespace }}-ca"
+  - it: leaf rule only applies to non-CA Certificates referencing an Issuer
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[2].preconditions.all[0].value
+          value: false
+      - equal:
+          path: spec.rules[2].preconditions.all[1].value
+          value: Issuer
+  - it: leaf rule looks up the namespace's own product CA and Issuer, then computes the expected issuer
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[2].context[0].name
+          value: productCAName
+      - matchRegex:
+          path: spec.rules[2].context[0].apiCall.urlPath
+          pattern: /certificates$
+      - equal:
+          path: spec.rules[2].context[1].name
+          value: productIssuerName
+      - matchRegex:
+          path: spec.rules[2].context[1].apiCall.urlPath
+          pattern: /issuers$
+      - equal:
+          path: spec.rules[2].context[2].name
+          value: expectedLeafIssuer
+      - matchRegex:
+          path: spec.rules[2].context[2].variable.jmesPath
+          pattern: request.namespace
+  - it: leaf rule denies unless the issuer matches the computed expected issuer
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[2].validate.deny.conditions.any[0].key
+          value: "{{ request.object.spec.issuerRef.name }}"
+      - equal:
+          path: spec.rules[2].validate.deny.conditions.any[0].value
+          value: "{{ expectedLeafIssuer }}"
+  - it: unmanaged-namespace rule excludes cert-manager and pki-managed namespaces
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[3].match.any[0].resources.namespaceSelector.matchExpressions[0].operator
+          value: NotIn
+      - contains:
+          path: spec.rules[3].match.any[0].resources.namespaceSelector.matchExpressions[0].values
+          content: cert-manager
+      - equal:
+          path: spec.rules[3].match.any[0].resources.namespaceSelector.matchExpressions[1].key
+          value: pki-managed
+      - equal:
+          path: spec.rules[3].match.any[0].resources.namespaceSelector.matchExpressions[1].operator
+          value: NotIn
+  - it: unmanaged-namespace rule denies unless ClusterIssuer/private-intermediate-ca
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[3].validate.deny.conditions.any[0].value
+          value: ClusterIssuer
+      - equal:
+          path: spec.rules[3].validate.deny.conditions.any[1].value
+          value: private-intermediate-ca
+  - it: renders no resources when policies disabled
+    set:
+      labels.environment: qac
+      pki.policies.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

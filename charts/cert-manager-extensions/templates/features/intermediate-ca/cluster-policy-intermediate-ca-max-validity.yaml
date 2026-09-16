@@ -1,0 +1,43 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-intermediate-ca-max-validity
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: Namespace intermediate CA Certificates (isCA: true) must not exceed 2160h (90 days) validity. Short-lived intermediate CAs are renewed automatically by cert-manager."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: intermediate-ca-max-validity
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+            operator: Equals
+            value: true
+      validate:
+        message: >
+          Intermediate CA Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' has validity
+          '{{ "{{" }} request.object.spec.duration || '2160h' {{ "}}" }}' which exceeds the platform
+          maximum of 2160h (90 days). Short-lived intermediate CAs are renewed automatically by cert-manager.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} to_number(split(request.object.spec.duration || '2160h', 'h')[0]) {{ "}}" }}"
+                operator: GreaterThan
+                value: 2160
+{{- end }}

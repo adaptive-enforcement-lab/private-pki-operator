@@ -1,0 +1,36 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-require-ecdsa-256
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: All Certificate resources must use ECDSA P-256. RSA and non-P256 ECDSA are not permitted on this platform."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-ecdsa-256
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+      validate:
+        message: >
+          Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' specifies
+          algorithm '{{ "{{" }} request.object.spec.privateKey.algorithm || 'unset' {{ "}}" }}'
+          with size '{{ "{{" }} request.object.spec.privateKey.size || 'unset' {{ "}}" }}'.
+          All certificates on this platform must use ECDSA with key size 256 (P-256).
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.privateKey.algorithm || '' {{ "}}" }}"
+                operator: NotEquals
+                value: ECDSA
+              - key: "{{ "{{" }} request.object.spec.privateKey.size || `0` {{ "}}" }}"
+                operator: NotEquals
+                value: 256
+{{- end }}

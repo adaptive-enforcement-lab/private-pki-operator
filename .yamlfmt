@@ -1,0 +1,27 @@
+---
+# `doublestar: true` is load-bearing. In yamlfmt's default Standard mode an
+# `exclude:` entry is `os.Stat`ed and skipped when it is a glob rather than a
+# real path, so every pattern below is silently discarded and the config
+# protects nothing while looking like it does. yamlfmt has no `match_type` key;
+# unrecognised keys are dropped without an error.
+#
+# `include:` must be doublestar globs. If none match, yamlfmt formats nothing
+# and exits 0 — a silent disable that reads as a clean pass.
+formatter:
+  type: basic
+  include_document_start: true
+  retain_line_breaks: true
+doublestar: true
+include:
+  - "**/*.yaml"
+  - "**/*.yml"
+exclude:
+  # This file is distributed from here to every platform repository.
+  # Repository-specific exclusions do not belong in this list — they go in the
+  # consuming repository's own pre-commit hook, which is not distributed.
+  - ".github/workflows/**/*.yaml"
+  - ".github/workflows/**/*.yml"
+  # Helm templates are not classic YAML. `{{- range ... }}` is not parseable as
+  # YAML, so yamlfmt errors on it rather than skipping and fails the run
+  # outright. Correctness, not style.
+  - "charts/*/templates/**"

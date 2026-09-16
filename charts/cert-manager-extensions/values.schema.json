@@ -1,0 +1,103 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "labels": {
+            "type": "object",
+            "properties": {
+                "component": {
+                    "description": "Component label",
+                    "type": "string"
+                },
+                "environment": {
+                    "description": "Environment label",
+                    "type": "string"
+                }
+            }
+        },
+        "pki": {
+            "type": "object",
+            "properties": {
+                "intermediateCA": {
+                    "type": "object",
+                    "properties": {
+                        "renewBefore": {
+                            "description": "How long before expiry cert-manager begins attempting renewal",
+                            "type": "string"
+                        },
+                        "validity": {
+                            "description": "Cluster intermediate CA validity duration (ISO 8601 duration string) Default: 90 days. Short-lived; cert-manager renews automatically.",
+                            "type": "string"
+                        }
+                    }
+                },
+                "namespaceCA": {
+                    "type": "object",
+                    "properties": {
+                        "chainOfCustody": {
+                            "type": "object",
+                            "properties": {
+                                "validationFailureAction": {
+                                    "description": "Kyverno validationFailureAction for pki-namespace-ca-chain-of-custody. Audit only: do not set to Enforce until pki-platform#353 confirms the backfill is clean across all 5 PKI-managed namespaces; the flip itself is a separate, explicit decision.",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "label": {
+                            "description": "Namespace-scoped intermediate CA generation (Certificate + Issuer) for any namespace carrying the label below, plus chain-of-custody enforcement.",
+                            "type": "string"
+                        },
+                        "renewBefore": {
+                            "description": "How long before expiry cert-manager begins attempting renewal",
+                            "type": "string"
+                        },
+                        "validity": {
+                            "description": "Namespace intermediate CA validity duration (ISO 8601 duration string). Default: 90 days, matching pki.intermediateCA. Short-lived; cert-manager renews automatically.",
+                            "type": "string"
+                        }
+                    }
+                },
+                "policies": {
+                    "type": "object",
+                    "properties": {
+                        "denyStaging": {
+                            "type": "object",
+                            "properties": {
+                                "validationFailureAction": {
+                                    "description": "Kyverno validationFailureAction for pki-deny-staging-configmap-mount. Audit: log violations without blocking (safe default for rollout). Enforce: block pods that mount the staging trust-anchor ConfigMap.",
+                                    "type": "string"
+                                }
+                            }
+                        },
+                        "enabled": {
+                            "description": "Deploy Kyverno audit ClusterPolicies for PKI compliance observability. Requires Kyverno to be installed in the cluster.",
+                            "type": "boolean"
+                        }
+                    }
+                },
+                "rootCA": {
+                    "type": "object",
+                    "properties": {
+                        "renewBefore": {
+                            "description": "How long before expiry cert-manager begins attempting renewal",
+                            "type": "string"
+                        },
+                        "validity": {
+                            "description": "Root CA certificate validity duration (ISO 8601 duration string) Default: 2 years. Root lives online in a Kubernetes Secret and renews automatically — shorter validity bounds blast radius without any operational cost.",
+                            "type": "string"
+                        }
+                    }
+                },
+                "trustManager": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "Deploy the private-intermediate-ca trust-manager Bundle. When true, trust-manager distributes the intermediate CA certificate to all namespaces as a ConfigMap (key: ca.crt). Note: the private-root-ca Bundle is operator-managed (not chart-managed).",
+                            "type": "boolean"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

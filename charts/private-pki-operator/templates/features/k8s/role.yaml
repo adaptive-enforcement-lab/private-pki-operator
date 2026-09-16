@@ -1,0 +1,19 @@
+---
+# Role: namespace-scoped resources in the operator namespace (cert-manager) only.
+# Secrets are in the ClusterRole (cluster-wide) — intermediate CA Secrets can
+# live in any namespace, so they cannot be restricted to cert-manager here.
+# Certificates and certificates/status are in the ClusterRole (cluster-wide).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: private-pki-operator
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+rules:
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [get, list, watch, create, patch]
+- apiGroups: [cert-manager.io]
+  resources: [certificaterequests]
+  verbs: [get, list, watch]

@@ -1,0 +1,9 @@
+apiVersion: platform.adaptive-enforcement-lab.com/v1alpha1
+kind: PKIRotation
+metadata:
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: pkirotation-sample
+spec:
+  # TODO(user): Add fields here

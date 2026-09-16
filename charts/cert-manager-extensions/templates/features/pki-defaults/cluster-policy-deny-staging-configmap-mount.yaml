@@ -1,0 +1,49 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-deny-staging-configmap-mount
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: >-
+      Enforce: Deny any pod outside the cert-manager namespace from mounting
+      the private-root-ca-trust-anchor ConfigMap. This ConfigMap is an
+      operator-internal staging resource managed exclusively by
+      private-pki-operator during root CA rotation. It is not a valid trust
+      anchor for workloads — use the trust-manager-distributed private-root-ca
+      ConfigMap instead.
+spec:
+  validationFailureAction: {{ .Values.pki.policies.denyStaging.validationFailureAction }}
+  background: true
+  rules:
+    - name: deny-staging-configmap-mount
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - cert-manager
+      validate:
+        message: >-
+          The ConfigMap 'private-root-ca-trust-anchor' is operator-internal and
+          must not be mounted by workloads. Mount 'private-root-ca' instead —
+          it is distributed by trust-manager to every namespace and contains
+          both root CA PEMs during rotation.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.volumes[?configMap.name == 'private-root-ca-trust-anchor'] || `[]` | length(@) {{ "}}" }}"
+                operator: GreaterThan
+                value: 0
+              - key: "{{ "{{" }} request.object.spec.volumes[].projected.sources[] | [?configMap.name == 'private-root-ca-trust-anchor'] || `[]` | length(@) {{ "}}" }}"
+                operator: GreaterThan
+                value: 0
+{{- end }}

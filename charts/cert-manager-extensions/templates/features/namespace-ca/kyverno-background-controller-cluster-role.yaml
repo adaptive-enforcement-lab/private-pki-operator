@@ -1,0 +1,40 @@
+---
+# ClusterRole: Kyverno Background Controller namespace-CA generation access
+#
+# Grants kyverno-background-controller the minimum permissions needed to execute
+# generate-namespace-intermediate-ca (cluster-policy-generate-namespace-ca.yaml). That
+# policy generates a Certificate + Issuer into whichever namespace matched the trigger
+# label -- the target namespace is dynamic ({{ `{{request.object.metadata.name}}` }}),
+# so this must be a ClusterRole, not a namespace-scoped Role (RBAC has no label-selector
+# scoping on namespaces; the policy itself restricts which namespaces are matched via
+# its own selector).
+#
+# Kyverno's admission webhook (validate-policy.kyverno.svc) validates at policy apply
+# time that the background controller has sufficient RBAC to perform every generate
+# target declared in the policy. Without this ClusterRole the sync fails with:
+#
+#   admission webhook "validate-policy.kyverno.svc" denied the request:
+#   path: spec.rules[0].generate..: system:serviceaccount:kyverno:kyverno-background-controller
+#   requires permissions create for resource cert-manager.io/v1/Certificate in
+#   namespace {{ `{{request.object.metadata.name}}` }}
+#
+# Bound by kyverno-background-controller-cluster-role-binding.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kyverno-background-controller:generate-namespace-intermediate-ca
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - cert-manager.io
+    resources:
+      - certificates
+      - issuers
+    verbs:
+      - create
+      - update
+      - delete
+      - get
+      - list
+      - watch

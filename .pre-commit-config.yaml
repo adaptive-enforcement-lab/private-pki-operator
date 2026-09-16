@@ -1,0 +1,91 @@
+# go-vulncheck, in the Go gates block below, is the one gate that runs at the
+# pre-push stage, and `pre-commit install` installs ONLY the stages named
+# here. Without pre-push in this list it writes no .git/hooks/pre-push at
+# all, so that entry would sit in this file reading as a gate and run
+# nowhere.
+default_install_hook_types: [pre-commit, pre-push]
+repos:
+  # General file hygiene + YAML validation
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+        name: Validate YAML syntax
+        args: [--unsafe]  # needed for Helm templates that use Go template syntax
+        exclude: '^charts/.*/templates/'  # Helm templates are not valid YAML
+      - id: end-of-file-fixer
+        name: Ensure files end with a newline
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+
+  # Helm chart linting
+  - repo: local
+    hooks:
+      - id: helm-unittest
+        name: Run Helm chart unit tests
+        # Mirrors helm-lint below: only for charts with staged changes, so an
+        # unrelated commit does not pay for it. The plugin is installed on demand
+        # rather than assumed — a missing plugin must not turn this into a hook
+        # that silently passes.
+        entry: bash -c 'helm plugin list 2>/dev/null | grep -q "^unittest" || helm plugin install https://github.com/helm-unittest/helm-unittest >/dev/null; for chart in charts/cert-manager-extensions charts/private-pki-operator; do if git diff --cached --name-only | grep -q "^${chart}/"; then echo "Testing ${chart}..."; helm unittest -f "tests/**/*_test.yaml" "${chart}" || exit 1; fi; done'
+        language: system
+        pass_filenames: false
+        files: ^charts/
+
+      - id: helm-lint
+        name: Lint Helm charts
+        entry: bash -c 'for chart in charts/cert-manager-extensions charts/private-pki-operator; do if git diff --cached --name-only | grep -q "^${chart}/"; then echo "Linting ${chart}..."; helm lint "${chart}" || exit 1; fi; done'
+        language: system
+        files: '^charts/'
+        pass_filenames: false
+
+  # Go gates — plain local hooks against the system Go toolchain. No
+  # coverage-floor gate here — that's governance this solo repo doesn't need.
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt (private-pki-operator)
+        entry: bash -c 'cd ci/private-pki-operator && gofmt -l . | grep . && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+        files: ^ci/private-pki-operator/.*\.go$
+      - id: go-vet
+        name: go vet (private-pki-operator)
+        entry: bash -c 'cd ci/private-pki-operator && go vet ./...'
+        language: system
+        pass_filenames: false
+        files: ^ci/private-pki-operator/(.*\.go|go\.(mod|sum))$
+      - id: golangci-lint
+        name: golangci-lint (private-pki-operator)
+        entry: bash -c 'cd ci/private-pki-operator && golangci-lint run ./...'
+        language: system
+        pass_filenames: false
+        files: ^ci/private-pki-operator/(.*\.go|go\.(mod|sum)|\.golangci\.ya?ml)$
+      - id: go-mod-tidy
+        name: go mod tidy (private-pki-operator)
+        entry: bash -c 'cd ci/private-pki-operator && go mod tidy && git diff --exit-code go.mod go.sum'
+        language: system
+        pass_filenames: false
+        files: ^ci/private-pki-operator/go\.(mod|sum)$
+      - id: go-test
+        name: go test (private-pki-operator)
+        entry: bash -c 'cd ci/private-pki-operator && go test ./cmd/... ./api/... ./internal/pki/...'
+        language: system
+        pass_filenames: false
+        files: ^ci/private-pki-operator/(.*\.go|go\.(mod|sum))$
+      - id: go-vulncheck
+        name: govulncheck (private-pki-operator)
+        entry: bash -c 'command -v govulncheck >/dev/null || go install golang.org/x/vuln/cmd/govulncheck@latest; cd ci/private-pki-operator && govulncheck ./...'
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+        files: ^ci/private-pki-operator/(.*\.go|go\.(mod|sum))$
+
+  # Secret scanning
+  - repo: local
+    hooks:
+      - id: trufflehog
+        name: TruffleHog - Scan for verified secrets
+        entry: bash -c 'command -v trufflehog >/dev/null || brew install trufflehog; if [ -f .git ]; then echo "⚠️  Skipping trufflehog in worktree (run from main repo)"; exit 0; else trufflehog git file://. --since-commit HEAD --only-verified --fail; fi'
+        language: system
+        pass_filenames: false

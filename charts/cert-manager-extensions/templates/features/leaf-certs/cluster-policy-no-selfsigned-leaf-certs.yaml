@@ -1,0 +1,52 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-no-selfsigned-leaf-certs
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: Leaf Certificates (isCA: false) must not reference a self-signed namespace Issuer. Leaf certificates must be issued by an Issuer backed by the platform intermediate CA."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: no-selfsigned-leaf-certs
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA == `true` {{ "}}" }}"
+            operator: Equals
+            value: false
+          - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+            operator: Equals
+            value: Issuer
+      context:
+        - name: issuerSpec
+          apiCall:
+            urlPath: "/apis/cert-manager.io/v1/namespaces/{{ "{{" }} request.object.metadata.namespace {{ "}}" }}/issuers/{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}"
+            jmesPath: "spec"
+            default: {}
+      validate:
+        message: >
+          Leaf Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' references self-signed
+          Issuer '{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}'. Leaf certificates must be
+          issued by an Issuer backed by the platform intermediate CA.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} contains(keys(issuerSpec || `{}`), 'selfSigned') {{ "}}" }}"
+                operator: Equals
+                value: true
+{{- end }}

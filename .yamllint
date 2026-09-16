@@ -1,0 +1,38 @@
+---
+extends: default
+rules:
+  # Warn, never fail: generated and vendored YAML routinely exceeds any sane limit.
+  line-length:
+    max: 350
+    level: warning
+  document-start:
+    present: true
+    level: warning
+  empty-lines:
+    max: 0
+    max-start: 0
+    max-end: 0
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: false
+  quoted-strings:
+    quote-type: double
+    required: only-when-needed
+  # Exactly one space inside YAML flow mappings. Loosened from the default
+  # because yamllint cannot distinguish YAML braces { } from Helm template
+  # syntax {{ }}, so a strict setting fails every chart template.
+  braces:
+    forbid: false
+    min-spaces-inside: 1
+    max-spaces-inside: 1
+    min-spaces-inside-empty: 0
+    max-spaces-inside-empty: 0
+  # release-please writes `# x-release-please-version` with ONE space and owns
+  # that line, while yamllint's default demands two — so the estate's release
+  # convention violated its own lint config. Only the minimum is relaxed.
+  comments:
+    min-spaces-from-content: 1
+# Exclusions live in .yamlignore, which this repository owns; an `ignore:` entry
+# added here is overwritten on the next sync. yamllint forbids `ignore` alongside
+# `ignore-from-file` and exits outright if the named file is absent.
+ignore-from-file: .yamlignore

@@ -1,0 +1,22 @@
+---
+# Allows the private-pki-operator SA (in cert-manager) to read
+# trust-manager Bundle ConfigMaps in the security namespace.
+# List/watch is granted broadly so the controller cache can track all
+# ConfigMaps; get is restricted to the two known CA ConfigMaps by name.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: private-pki-operator-security-configmaps
+  namespace: security
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+rules:
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [list, watch]
+- apiGroups: [""]
+  resources: [configmaps]
+  resourceNames:
+    - {{ .Values.trustBundle.rootCAConfigMap }}
+    - {{ .Values.trustBundle.intermediateCAConfigMap }}
+  verbs: [get]

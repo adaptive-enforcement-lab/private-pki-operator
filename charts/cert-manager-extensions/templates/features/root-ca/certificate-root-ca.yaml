@@ -1,0 +1,33 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: private-root-ca
+  namespace: cert-manager
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Per-environment private root CA. Signed by private-root-ca-selfsigned; signs the cluster intermediate CA. Trust anchor for all mTLS in the cluster."
+spec:
+  isCA: true
+  commonName: {{ printf "Private Root CA %s" (.Values.labels.environment | upper) | quote }}
+  subject:
+    organizations:
+      - "Adaptive Enforcement Lab"
+    # Matches metadata.namespace above, which is pinned to cert-manager. Not
+    # .Release.Namespace: the certificate lands in cert-manager regardless of
+    # where the release is installed, and an OU naming a different namespace
+    # would be a false claim about where the key lives.
+    organizationalUnits:
+      - "cert-manager"
+  secretName: "private-root-ca"
+  duration: {{ .Values.pki.rootCA.validity | quote }}
+  renewBefore: {{ .Values.pki.rootCA.renewBefore | quote }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: private-root-ca-selfsigned
+    kind: Issuer
+    group: cert-manager.io

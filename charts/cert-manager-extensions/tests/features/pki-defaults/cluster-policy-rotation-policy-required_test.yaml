@@ -1,0 +1,55 @@
+suite: ClusterPolicy / pki-rotation-policy-required
+templates:
+  - features/pki-defaults/cluster-policy-rotation-policy-required.yaml
+tests:
+  - it: renders a ClusterPolicy
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterPolicy
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pki-rotation-policy-required
+  - it: is in Audit mode
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Audit
+  - it: runs background scans
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.background
+          value: true
+  - it: targets cert-manager Certificate resources only
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.kinds[0]
+          value: cert-manager.io/*/Certificate
+  - it: denies when rotationPolicy is absent
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.all[0].operator
+          value: Equals
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.all[0].value
+          value: ""
+  - it: renders no resources when policies disabled
+    set:
+      labels.environment: qac
+      pki.policies.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

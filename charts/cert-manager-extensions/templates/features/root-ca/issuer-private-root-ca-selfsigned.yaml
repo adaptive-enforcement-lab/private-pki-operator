@@ -1,0 +1,17 @@
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: private-root-ca-selfsigned
+  # Namespace-scoped rather than cluster-scoped: this issuer signs exactly one
+  # certificate, private-root-ca, which lives here. As a ClusterIssuer it was
+  # reachable from every namespace in the cluster, so any workload could mint a
+  # self-signed CA from it and chain arbitrary certificates off a name that looks
+  # like platform PKI. Scoping it removes that reach without changing what it does.
+  namespace: cert-manager
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Permanent self-signed issuer for the private root CA. Used by cert-manager to issue and auto-renew the root CA Certificate in this namespace — not for use by consumers or workloads."
+spec:
+  selfSigned: {}

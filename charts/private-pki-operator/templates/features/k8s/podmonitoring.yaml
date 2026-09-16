@@ -1,0 +1,28 @@
+{{- if and .Values.metrics.bindAddress .Values.metrics.podMonitoring.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: private-pki-operator
+  namespace: {{ .Values.namespace }}
+  annotations:
+    description: >-
+      Prometheus scrape config for the private-pki-operator metrics
+      endpoint. Collects the pkirotation_* collectors that report root and
+      intermediate CA rotation state: which phase each PKIRotation holds, how many
+      downstream certificates each cascade reissued, and whether any rotation has
+      breached its re-issuance timeout. Without this the rotation state machine is
+      observable only by reading CR conditions by hand.
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+spec:
+  # Prometheus scrapes pods directly, so this selects on the Deployment's own
+  # pod label rather than fronting the port with a Service.
+  selector:
+    matchLabels:
+      app: private-pki-operator
+  podMetricsEndpoints:
+    - port: metrics
+      interval: {{ .Values.metrics.podMonitoring.interval }}
+      path: /metrics
+{{- end }}

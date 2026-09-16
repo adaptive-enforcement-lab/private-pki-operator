@@ -1,0 +1,151 @@
+---
+# =============================================================================
+# golangci-lint configuration
+# =============================================================================
+# It lands at each REPOSITORY ROOT, not per module. golangci-lint walks up to a
+# parent-directory config, so a module with no local .golangci.yml resolves
+# ../.golangci.yml and inherits this one.
+#
+# It must run on a STOCK golangci-lint binary, in CI and in pre-commit alike.
+# That constraint is why `logcheck` is absent: it is a module plugin requiring
+# `golangci-lint custom` plus a .custom-gcl.yml, which would force a custom
+# binary build on every developer workstation as well as in CI. golangci-lint
+# v2 has no `extends`, so a repository needing plugin linters must diverge
+# fully -- which is the drift this file exists to end.
+#
+# See: https://golangci-lint.run/usage/configuration/
+# =============================================================================
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - copyloopvar
+    - depguard
+    - dupl
+    - errcheck
+    - funlen
+    # Bundled, not a plugin, and inert on non-Ginkgo code -- so it costs
+    # nothing in the repositories that do not use Ginkgo and catches the
+    # silently-passing assertion in the ones that do.
+    - ginkgolinter
+    - goconst
+    - gocyclo
+    - godot
+    # The estate's only SAST linter. Seventeen modules enable it today via the
+    # older baseline; it stays enabled here so converging on this file never
+    # silently removes security scanning from any of them.
+    - gosec
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - modernize
+    - nakedret
+    - prealloc
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+  settings:
+    lll:
+      line-length: 120
+    depguard:
+      rules:
+        forbid-sort-pkg:
+          deny:
+            - pkg: sort
+              desc: Should be replaced with slices package
+    revive:
+      # golangci-lint REPLACES revive's default rule set the moment `rules` is
+      # non-empty. Without this flag the rules below are the ONLY revive rules
+      # that run, and var-naming, exported, error-strings, unused-parameter and
+      # nineteen others are silently off -- a state that reports as ZERO
+      # findings, which is exactly why it survives unnoticed. Never remove it.
+      enable-default-rules: true
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+        # Ginkgo and Gomega are DSLs whose whole surface is meant to be dotted
+        # in -- `Describe`, `It`, `Expect` read as language, not as calls on a
+        # package. Allow-listing the two by name keeps dot-imports enforced
+        # against every other package rather than switching the rule off for
+        # test files.
+        - name: dot-imports
+          arguments:
+            - allowedPackages:
+                - github.com/onsi/ginkgo/v2
+                - github.com/onsi/gomega
+        # Rule 4 of the Power of Ten applies to functions; this is its
+        # file-level companion. Measured in CODE lines -- the house style puts
+        # the "why" in doc comments, so counting those would penalise the
+        # practice that keeps these files readable.
+        - name: file-length-limit
+          arguments:
+            - max: 400
+              skipComments: true
+              skipBlankLines: true
+    modernize:
+      disable:
+        - omitzero
+        - newexpr
+  exclusions:
+    # Load-bearing. Verified to suppress generated protobuf (.pb.go) and
+    # deepcopy sources; with `disable` they contribute findings nobody can fix.
+    generated: lax
+    rules:
+      # funlen and revive's file-length-limit measure the verification unit.
+      # For a table-driven test the length IS the data -- cases and fixtures --
+      # not control flow, and splitting one moves a case away from the
+      # assertion that reads it. Production code gets no such exemption.
+      #
+      # The revive half is scoped to that ONE rule by message text. A bare
+      # `linters: [revive]` here would exclude EVERY revive rule from test
+      # files -- comment-spacings, import-shadowing and the whole default set
+      # -- which is a far larger exemption than the length one being granted.
+      - linters:
+          - funlen
+        path: _test\.go
+      - linters:
+          - revive
+        path: _test\.go
+        text: file-length-limit
+      # Table-driven tests repeat fixture literals such as "Deployment" and
+      # "argoproj.io" by design. Hoisting them into constants moves the data
+      # away from the case that uses it and makes the tables harder to read,
+      # which is the opposite of what goconst is for.
+      - linters:
+          - goconst
+        path: _test\.go
+    # NOTE ON WHAT IS DELIBERATELY *NOT* HERE.
+    # This config carries no `internal/*`, `pkg/*` or `api/*` path exclusions.
+    # Those were kubebuilder-shaped local exclusions in the config this one was
+    # composed from, and `internal/` and `pkg/` are where essentially all Go
+    # code in this estate lives -- inheriting them would disable `lll` and
+    # `dupl` almost everywhere. Note also that these are unanchored REGEXES,
+    # not globs: `api/*` matches any path merely CONTAINING "api", including
+    # internal/apiserver/ and pkg/rapid/.
+    # The golden config biases to maximum strictness; a repository with a real,
+    # named exception narrows from here in its own config, under audit.
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+issues:
+  # Both default to caps (max-issues-per-linter 50, max-same-issues 3), so a
+  # "clean" run was only ever clean up to three instances of any one message.
+  # Uncapped is the only honest reading of the backlog.
+  max-issues-per-linter: 0
+  max-same-issues: 0

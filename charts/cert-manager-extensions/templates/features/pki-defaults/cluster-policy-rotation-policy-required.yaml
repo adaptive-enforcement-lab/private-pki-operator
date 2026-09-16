@@ -1,0 +1,32 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-rotation-policy-required
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: All Certificate resources must explicitly declare spec.privateKey.rotationPolicy. The cert-manager default (Never) silently prevents key rotation on renewal."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: rotation-policy-required
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+      validate:
+        message: >
+          Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' does not declare
+          spec.privateKey.rotationPolicy. Set it explicitly to 'Always' (key rotates on renewal)
+          or 'Never' (permitted only for JWT signing keys and root CAs without trust-manager).
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} request.object.spec.privateKey.rotationPolicy || '' {{ "}}" }}"
+                operator: Equals
+                value: ""
+{{- end }}

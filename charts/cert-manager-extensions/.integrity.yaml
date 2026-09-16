@@ -1,0 +1,32 @@
+---
+# Integrity expectations for cert-manager-extensions.
+#
+# The counts below are declared, not derived: `helm integrity` renders the chart
+# and fails when reality diverges. For this chart in particular that matters —
+# it owns the trust root, so a Certificate or ClusterIssuer silently leaving the
+# render is a change to what the cluster trusts.
+dry:
+  templates:
+    yamlFiles: 20
+    tplHelpers: 1
+  # Namespace-CA generation and its chain-of-custody guardrail are
+  # unconditional chart features, same as every other policy here.
+  resources:
+    # The trust chain: selfsigned Issuer signs the root CA Certificate, which
+    # backs the root ClusterIssuer, which signs the intermediate CA Certificate,
+    # which backs the intermediate ClusterIssuer.
+    Issuer: 1
+    Certificate: 2
+    ClusterIssuer: 2
+    # trust-manager distribution of the intermediate bundle.
+    Bundle: 1
+    # Kyverno guardrails around who may use the platform issuers, including
+    # namespace-CA generation and chain-of-custody.
+    ClusterPolicy: 11
+    # Namespace-CA generation: ClusterRole/Binding grant
+    # kyverno-background-controller the RBAC to generate Certificates/Issuers.
+    ClusterRole: 1
+    ClusterRoleBinding: 1
+# No hydration section: the actual deploy values live in the consuming
+# cluster's own repo (e.g. homelab's k8s/cert-manager-extensions/values.yaml),
+# not here, so this repo can't render against them to test for drift.

@@ -1,0 +1,97 @@
+suite: ClusterPolicy / pki-no-selfsigned-leaf-certs
+templates:
+  - features/leaf-certs/cluster-policy-no-selfsigned-leaf-certs.yaml
+tests:
+  - it: renders a ClusterPolicy
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterPolicy
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pki-no-selfsigned-leaf-certs
+  - it: is in Audit mode
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Audit
+  - it: runs background scans
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.background
+          value: true
+  - it: targets cert-manager Certificate resources only
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.kinds[0]
+          value: cert-manager.io/*/Certificate
+  - it: excludes the cert-manager namespace
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchExpressions[0].operator
+          value: NotIn
+      - contains:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchExpressions[0].values
+          content: cert-manager
+  - it: only applies to non-CA leaf certificates via precondition
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].preconditions.all[0].operator
+          value: Equals
+      - equal:
+          path: spec.rules[0].preconditions.all[0].value
+          value: false
+  - it: only applies to namespace-scoped Issuers via precondition
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].preconditions.all[1].operator
+          value: Equals
+      - equal:
+          path: spec.rules[0].preconditions.all[1].value
+          value: Issuer
+  - it: fetches the Issuer spec via context apiCall
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].context[0].name
+          value: issuerSpec
+      - isNotEmpty:
+          path: spec.rules[0].context[0].apiCall.urlPath
+      - equal:
+          path: spec.rules[0].context[0].apiCall.jmesPath
+          value: spec
+  - it: denies when the referenced Issuer is self-signed
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.all[0].operator
+          value: Equals
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.all[0].value
+          value: true
+  - it: renders no resources when policies disabled
+    set:
+      labels.environment: qac
+      pki.policies.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

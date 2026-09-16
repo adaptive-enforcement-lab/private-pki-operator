@@ -1,0 +1,85 @@
+suite: ClusterPolicy / pki-trust-bundle-adoption
+templates:
+  - features/pki-defaults/cluster-policy-trust-bundle-adoption.yaml
+tests:
+  - it: renders a ClusterPolicy
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterPolicy
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pki-trust-bundle-adoption
+  - it: is in Audit mode
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Audit
+  - it: runs background scans
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.background
+          value: true
+  - it: targets Namespace resources
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.kinds[0]
+          value: Namespace
+  - it: excludes platform and system namespaces
+    set:
+      labels.environment: qac
+    asserts:
+      - contains:
+          path: spec.rules[0].exclude.any[0].resources.names
+          content: cert-manager
+      - contains:
+          path: spec.rules[0].exclude.any[0].resources.names
+          content: kube-system
+  - it: only applies when cert-manager Certificates exist via precondition
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].preconditions.all[0].operator
+          value: GreaterThan
+      - equal:
+          path: spec.rules[0].preconditions.all[0].value
+          value: 0
+  - it: counts Certificates, not Secrets, to avoid needing Secret-read RBAC
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].context[0].name
+          value: certCount
+      - matchRegex:
+          path: spec.rules[0].context[0].apiCall.urlPath
+          pattern: ^/apis/cert-manager\.io/v1/namespaces/.*/certificates$
+  - it: denies when no pods consume the trust bundle
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.all[0].operator
+          value: Equals
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.all[0].value
+          value: 0
+  - it: renders no resources when policies disabled
+    set:
+      labels.environment: qac
+      pki.policies.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

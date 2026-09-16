@@ -1,0 +1,52 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-restrict-platform-clusterissuers
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: Certificates outside cert-manager must not reference platform ClusterIssuers directly. Use a namespace-scoped Issuer backed by your intermediate CA."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: restrict-platform-clusterissuers
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+            operator: Equals
+            value: false
+      validate:
+        message: >
+          Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' references platform
+          ClusterIssuer '{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}' directly.
+          Use your namespace-scoped Issuer instead.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+                operator: Equals
+                value: ClusterIssuer
+              - key: "{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}"
+                operator: AnyIn
+                value:
+                  # private-root-ca-selfsigned is deliberately absent: it is a
+                  # namespace Issuer in cert-manager now, and a namespace Issuer
+                  # cannot be referenced across namespaces, so no Certificate this
+                  # policy matches could name it.
+                  - private-root-ca
+                  - private-intermediate-ca
+{{- end }}

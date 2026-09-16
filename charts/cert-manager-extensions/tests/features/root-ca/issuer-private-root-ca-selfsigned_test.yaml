@@ -1,0 +1,37 @@
+suite: Issuer / private-root-ca-selfsigned
+templates:
+  - features/root-ca/issuer-private-root-ca-selfsigned.yaml
+tests:
+  - it: renders a namespace Issuer, not a ClusterIssuer
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: Issuer
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: private-root-ca-selfsigned
+  - it: is scoped to the namespace its only consumer lives in
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: cert-manager
+  - it: uses selfSigned spec
+    set:
+      labels.environment: qac
+    asserts:
+      - isNotNull:
+          path: spec.selfSigned
+  - it: carries the environment label
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.labels.environment
+          value: qac

@@ -1,0 +1,199 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {
+        "image": {
+            "type": "object",
+            "properties": {
+                "repository": {
+                    "description": "Operator image repository. Built and pushed via `make build-push` in ci/private-pki-operator.",
+                    "type": "string"
+                },
+                "tag": {
+                    "description": "Image tag. appVersion tracks the chart's own version, not the operator's — it is NOT a valid image tag. Set this explicitly in the consuming cluster's own values file.",
+                    "type": "string"
+                }
+            }
+        },
+        "installCRDs": {
+            "description": "Install CRDs as part of chart deployment. Set to false if CRDs are managed externally (e.g. by another tool or chart).",
+            "type": "boolean"
+        },
+        "metrics": {
+            "type": "object",
+            "properties": {
+                "bindAddress": {
+                    "description": "Address the metrics endpoint binds to. Set to \"0\" to disable the metrics server.",
+                    "type": "string"
+                },
+                "podMonitoring": {
+                    "type": "object",
+                    "properties": {
+                        "enabled": {
+                            "description": "Create a prometheus-operator PodMonitor resource to scrape the metrics endpoint. Prometheus scrapes pods directly, so no Service is needed in front of the port.",
+                            "type": "boolean"
+                        },
+                        "interval": {
+                            "description": "Scrape interval for the operator metrics endpoint. Rotations are minutes-long state machines, so a sub-minute interval buys nothing and costs samples.",
+                            "type": "string"
+                        }
+                    }
+                },
+                "port": {
+                    "description": "Container port exposed for the metrics endpoint. Must match the port in bindAddress.",
+                    "type": "integer"
+                },
+                "secure": {
+                    "description": "Serve metrics over HTTPS with Kubernetes authn/authz filtering. Left false: the endpoint is reachable only from inside the cluster, and enabling it additionally requires TokenReview/SubjectAccessReview RBAC and scrape-side TLS trust, which this chart does not yet wire up.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "namespace": {
+            "description": "Namespace for the operator itself (must be the trust-manager trust namespace).",
+            "type": "string"
+        },
+        "pkirotation": {
+            "type": "object",
+            "properties": {
+                "enabled": {
+                    "description": "Register the rotation watcher for the platform root CA. Off by default so the chart can be installed without taking ownership of a cluster's trust root; every environment enables it through its cd/ values.",
+                    "type": "boolean"
+                },
+                "reissuanceTimeout": {
+                    "description": "Maximum time to wait for intermediate CA re-issuance before emitting a Warning.",
+                    "type": "string"
+                },
+                "rootCA": {
+                    "type": "object",
+                    "properties": {
+                        "certificateName": {
+                            "description": "Name of the cert-manager Certificate representing the root CA.",
+                            "type": "string"
+                        },
+                        "certificateNamespace": {
+                            "description": "Namespace of the root CA Certificate (always cert-manager for platform PKI).",
+                            "type": "string"
+                        }
+                    }
+                },
+                "trustBundle": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "description": "Name of the cluster-scoped trust-manager Bundle resource.",
+                            "type": "string"
+                        },
+                        "stagingConfigMap": {
+                            "type": "object",
+                            "properties": {
+                                "name": {
+                                    "description": "Name of the staging ConfigMap the operator manages. Must NOT be the cert-manager-managed Secret — this ConfigMap is owned by the operator.",
+                                    "type": "string"
+                                },
+                                "namespace": {
+                                    "description": "Namespace of the staging ConfigMap (trust-manager trust namespace).",
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "resources": {
+            "type": "object",
+            "properties": {
+                "limits": {
+                    "type": "object",
+                    "properties": {
+                        "cpu": {
+                            "description": "CPU limit. Headroom for a rotation cascade, which walks the whole certificate tree in a burst.",
+                            "type": "string"
+                        },
+                        "memory": {
+                            "description": "Memory limit. Deliberately close to the request: a cache that grows past this indicates the watch set has expanded unexpectedly, and failing loudly beats silently consuming the node.",
+                            "type": "string"
+                        }
+                    }
+                },
+                "requests": {
+                    "type": "object",
+                    "properties": {
+                        "cpu": {
+                            "description": "CPU request. The operator is idle almost all the time — it reconciles on Secret and Certificate events, not on a timer — so the request is sized for scheduling rather than for throughput.",
+                            "type": "string"
+                        },
+                        "memory": {
+                            "description": "Memory request. Sized for the informer caches, which hold Certificates and Secrets cluster-wide and dominate the footprint.",
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "securityContext": {
+            "type": "object",
+            "properties": {
+                "allowPrivilegeEscalation": {
+                    "description": "Block setuid escalation. Nothing in the image is setuid, so this closes a door that is never used rather than constraining anything.",
+                    "type": "boolean"
+                },
+                "capabilities": {
+                    "type": "object",
+                    "properties": {
+                        "drop": {
+                            "description": "Drop every Linux capability. This process makes API calls and nothing else; it needs none of them.",
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                },
+                "privileged": {
+                    "description": "Never privileged. Stated explicitly rather than left to the default so the posture is auditable from values.yaml alone.",
+                    "type": "boolean"
+                },
+                "readOnlyRootFilesystem": {
+                    "description": "Immutable root filesystem. The operator writes nothing to disk — no cache, no temp files — so a writable filesystem would only ever serve an attacker.",
+                    "type": "boolean"
+                },
+                "runAsGroup": {
+                    "description": "GID to run as, matching the image's group.",
+                    "type": "integer"
+                },
+                "runAsNonRoot": {
+                    "description": "Refuse to start as UID 0. The operator needs no root capability; it reads Secrets and patches Certificates through the API server.",
+                    "type": "boolean"
+                },
+                "runAsUser": {
+                    "description": "UID to run as. 65532 is the nonroot user baked into the distroless base image (Dockerfile: USER 65532:65532); declaring it here means the manifest asserts what the image already does rather than trusting it.",
+                    "type": "integer"
+                },
+                "seccompProfile": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "description": "Seccomp profile. RuntimeDefault blocks the syscalls a controller never issues, which is the cheapest real reduction in kernel attack surface here.",
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "trustBundle": {
+            "type": "object",
+            "properties": {
+                "intermediateCAConfigMap": {
+                    "description": "ConfigMap holding the intermediate CA bundle distributed by trust-manager.",
+                    "type": "string"
+                },
+                "rootCAConfigMap": {
+                    "description": "ConfigMap holding the root CA bundle distributed by trust-manager.",
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

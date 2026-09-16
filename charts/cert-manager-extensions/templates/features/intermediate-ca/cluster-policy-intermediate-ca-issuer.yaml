@@ -1,0 +1,173 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-intermediate-ca-issuer
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: >-
+      Enforce: the two-tier chain-of-custody contract (pki-platform#328/#364, see
+      docs/features/cert-manager-extensions/operator-manual.md). In a namespace carrying
+      {{ .Values.pki.namespaceCA.label }}: "true": the sanctioned <namespace>-intermediate-ca
+      Certificate must reference ClusterIssuer/private-intermediate-ca directly; any other
+      isCA Certificate is a product-level CA and must chain through this namespace's own
+      Issuer/<namespace>-ca, not the ClusterIssuer and not another namespace's Issuer; and a
+      leaf Certificate must use the deepest CA present -- the product Issuer if one exists,
+      the namespace Issuer otherwise. Namespaces outside the rollout keep the original,
+      single-hop rule: every isCA Certificate references ClusterIssuer/private-intermediate-ca
+      directly.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: namespace-ca-must-use-platform-issuer
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchLabels:
+                  {{ .Values.pki.namespaceCA.label }}: "true"
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+            operator: Equals
+            value: true
+          - key: "{{ "{{" }} request.object.metadata.name {{ "}}" }}"
+            operator: Equals
+            value: "{{ "{{" }} request.namespace {{ "}}" }}-intermediate-ca"
+      validate:
+        message: >
+          Namespace intermediate CA '{{ "{{" }} request.object.metadata.name {{ "}}" }}' must
+          reference ClusterIssuer/private-intermediate-ca. Found:
+          {{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}/{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+                operator: NotEquals
+                value: ClusterIssuer
+              - key: "{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}"
+                operator: NotEquals
+                value: private-intermediate-ca
+    - name: product-level-ca-must-use-namespace-issuer
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchLabels:
+                  {{ .Values.pki.namespaceCA.label }}: "true"
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+            operator: Equals
+            value: true
+          - key: "{{ "{{" }} request.object.metadata.name {{ "}}" }}"
+            operator: NotEquals
+            value: "{{ "{{" }} request.namespace {{ "}}" }}-intermediate-ca"
+      validate:
+        message: >
+          Product-level intermediate CA '{{ "{{" }} request.object.metadata.name {{ "}}" }}' in
+          namespace '{{ "{{" }} request.namespace {{ "}}" }}' must reference this namespace's own
+          Issuer/{{ "{{" }} request.namespace {{ "}}" }}-ca, not the cluster ClusterIssuer and not
+          another namespace's Issuer -- this is also what caps the chain at two tiers. Found:
+          {{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}/{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+                operator: NotEquals
+                value: Issuer
+              - key: "{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}"
+                operator: NotEquals
+                value: "{{ "{{" }} request.namespace {{ "}}" }}-ca"
+    - name: leaf-must-use-deepest-namespace-ca
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchLabels:
+                  {{ .Values.pki.namespaceCA.label }}: "true"
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+            operator: Equals
+            value: false
+          - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+            operator: Equals
+            value: Issuer
+      context:
+        # The at-most-one product CA beneath this namespace's own CA, if any exists --
+        # rule product-level-ca-must-use-namespace-issuer is what guarantees there's never
+        # more than one, so taking [0] is safe, not an arbitrary truncation.
+        - name: productCAName
+          apiCall:
+            urlPath: "/apis/cert-manager.io/v1/namespaces/{{ "{{" }} request.namespace {{ "}}" }}/certificates"
+            jmesPath: >-
+              items[?spec.isCA==`true` && spec.issuerRef.kind=='Issuer' &&
+              spec.issuerRef.name=='{{ "{{" }} request.namespace {{ "}}" }}-ca'].metadata.name | [0] || ''
+            default: ""
+        - name: productIssuerName
+          apiCall:
+            urlPath: "/apis/cert-manager.io/v1/namespaces/{{ "{{" }} request.namespace {{ "}}" }}/issuers"
+            jmesPath: "items[?spec.ca.secretName=='{{ "{{" }} productCAName {{ "}}" }}'].metadata.name | [0] || ''"
+            default: ""
+        - name: expectedLeafIssuer
+          variable:
+            jmesPath: >-
+              productIssuerName != '' && productIssuerName || '{{ "{{" }} request.namespace {{ "}}" }}-ca'
+      validate:
+        message: >
+          Leaf Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' in namespace
+          '{{ "{{" }} request.namespace {{ "}}" }}' must reference Issuer/{{ "{{" }} expectedLeafIssuer {{ "}}" }}
+          -- the deepest CA in this namespace's chain -- not
+          Issuer/{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}"
+                operator: NotEquals
+                value: "{{ "{{" }} expectedLeafIssuer {{ "}}" }}"
+    - name: unmanaged-namespace-ca-must-use-platform-issuer
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+                  - key: {{ .Values.pki.namespaceCA.label }}
+                    operator: NotIn
+                    values:
+                      - "true"
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.isCA || false {{ "}}" }}"
+            operator: Equals
+            value: true
+      validate:
+        message: >
+          Intermediate CA Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' must
+          reference ClusterIssuer/private-intermediate-ca. Found:
+          {{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}/{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+                operator: NotEquals
+                value: ClusterIssuer
+              - key: "{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}"
+                operator: NotEquals
+                value: private-intermediate-ca
+{{- end }}

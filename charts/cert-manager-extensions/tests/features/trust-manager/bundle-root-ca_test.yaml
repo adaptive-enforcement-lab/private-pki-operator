@@ -1,0 +1,11 @@
+suite: Bundle / private-root-ca (removed — managed by private-pki-operator)
+templates:
+  - features/trust-manager/bundle-root-ca.yaml
+tests:
+  - it: renders no resources (Bundle is managed by private-pki-operator)
+    set:
+      labels.environment: qac
+      pki.trustManager.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0

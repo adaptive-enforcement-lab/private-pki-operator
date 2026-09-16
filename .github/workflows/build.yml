@@ -1,0 +1,32 @@
+---
+# Minimal build/test CI. Release/publish is manual — see
+# ci/private-pki-operator/Makefile (build-push).
+name: Build
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+jobs:
+  operator:
+    name: Operator build/vet/test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ci/private-pki-operator
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ci/private-pki-operator/go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./cmd/... ./api/... ./internal/pki/...
+
+  helm-lint:
+    name: Helm lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+      - run: helm lint charts/private-pki-operator charts/cert-manager-extensions

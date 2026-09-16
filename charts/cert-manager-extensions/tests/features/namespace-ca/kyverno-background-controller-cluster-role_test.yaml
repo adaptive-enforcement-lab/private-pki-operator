@@ -1,0 +1,47 @@
+suite: ClusterRole / kyverno-background-controller:generate-namespace-intermediate-ca
+templates:
+  - features/namespace-ca/kyverno-background-controller-cluster-role.yaml
+  - features/namespace-ca/kyverno-background-controller-cluster-role-binding.yaml
+tests:
+  - it: renders a ClusterRole and a ClusterRoleBinding
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterRole
+        template: features/namespace-ca/kyverno-background-controller-cluster-role.yaml
+      - isKind:
+          of: ClusterRoleBinding
+        template: features/namespace-ca/kyverno-background-controller-cluster-role-binding.yaml
+  - it: grants create/update/delete/get/list/watch on cert-manager Certificates and Issuers
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: rules[0].apiGroups[0]
+          value: cert-manager.io
+        template: features/namespace-ca/kyverno-background-controller-cluster-role.yaml
+      - equal:
+          path: rules[0].resources
+          value: [certificates, issuers]
+        template: features/namespace-ca/kyverno-background-controller-cluster-role.yaml
+      - equal:
+          path: rules[0].verbs
+          value: [create, update, delete, get, list, watch]
+        template: features/namespace-ca/kyverno-background-controller-cluster-role.yaml
+  - it: binds the kyverno-background-controller ServiceAccount in the kyverno namespace
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: subjects[0].name
+          value: kyverno-background-controller
+        template: features/namespace-ca/kyverno-background-controller-cluster-role-binding.yaml
+      - equal:
+          path: subjects[0].namespace
+          value: kyverno
+        template: features/namespace-ca/kyverno-background-controller-cluster-role-binding.yaml
+      - equal:
+          path: roleRef.name
+          value: "kyverno-background-controller:generate-namespace-intermediate-ca"
+        template: features/namespace-ca/kyverno-background-controller-cluster-role-binding.yaml

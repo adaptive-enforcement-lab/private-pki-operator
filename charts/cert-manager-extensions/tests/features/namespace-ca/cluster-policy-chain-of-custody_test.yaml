@@ -1,0 +1,106 @@
+suite: ClusterPolicy / pki-namespace-ca-chain-of-custody
+templates:
+  - features/namespace-ca/cluster-policy-chain-of-custody.yaml
+tests:
+  - it: renders a ClusterPolicy
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterPolicy
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pki-namespace-ca-chain-of-custody
+  - it: defaults to Audit, never Enforce
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Audit
+  - it: runs background scans
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.background
+          value: true
+  - it: the Certificate rule targets Certificates outside cert-manager
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].name
+          value: namespace-ca-certificate-must-be-generated
+      - equal:
+          path: spec.rules[0].match.any[0].resources.kinds[0]
+          value: cert-manager.io/*/Certificate
+      - equal:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchExpressions[0].operator
+          value: NotIn
+      - contains:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchExpressions[0].values
+          content: cert-manager
+  - it: the Certificate rule is scoped to pki-managed namespaces only, not a full-estate sweep
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchLabels["pki-managed"]
+          value: "true"
+  - it: the Certificate rule scoping label follows a custom namespaceCA.label override
+    set:
+      labels.environment: qac
+      pki.namespaceCA.label: acme.io/custom-pki
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.namespaceSelector.matchLabels["acme.io/custom-pki"]
+          value: "true"
+  - it: the Certificate rule only fires when issuerRef.kind is ClusterIssuer
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].preconditions.all[0].value
+          value: ClusterIssuer
+  - it: the Certificate rule denies unless named <namespace>-intermediate-ca and generator-marked
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[0].operator
+          value: NotEquals
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[1].value
+          value: generate-namespace-intermediate-ca
+  - it: the Issuer rule targets Issuers named <namespace>-ca outside cert-manager
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[1].name
+          value: namespace-ca-issuer-must-be-generated
+      - equal:
+          path: spec.rules[1].match.any[0].resources.kinds[0]
+          value: Issuer
+  - it: the Issuer rule is also scoped to pki-managed namespaces only
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[1].match.any[0].resources.namespaceSelector.matchLabels["pki-managed"]
+          value: "true"
+  - it: the Issuer rule denies unless generator-marked
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[1].validate.deny.conditions.all[0].operator
+          value: NotEquals
+      - equal:
+          path: spec.rules[1].validate.deny.conditions.all[0].value
+          value: generate-namespace-intermediate-ca

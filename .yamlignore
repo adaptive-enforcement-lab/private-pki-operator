@@ -1,0 +1,12 @@
+# yamllint exclusions, in .gitignore pattern syntax.
+# Add generated, vendored, or machine-authored YAML here freely.
+# yamllint reads this file via `ignore-from-file`.
+# Keep the three entries below — they are the organisation-wide defaults that
+# used to live in .yamllint's `ignore:` block.
+
+mkdocs.yml
+.github/workflows
+
+# Helm templates must be ignored because yamllint cannot parse Go template
+# syntax. Use `helm lint` instead for validating Helm charts.
+charts/*/templates/

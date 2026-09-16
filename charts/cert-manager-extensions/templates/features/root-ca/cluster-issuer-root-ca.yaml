@@ -1,0 +1,12 @@
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: private-root-ca
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Per-environment private root CA issuer. Signs the cluster intermediate CA Certificate only — not for direct use by consumers."
+spec:
+  ca:
+    secretName: "private-root-ca"

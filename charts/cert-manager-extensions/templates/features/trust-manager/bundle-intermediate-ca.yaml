@@ -1,0 +1,20 @@
+{{- if .Values.pki.trustManager.enabled }}
+---
+apiVersion: trust.cert-manager.io/v1alpha1
+kind: Bundle
+metadata:
+  name: private-intermediate-ca
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Distributes the private intermediate CA certificate to all namespaces as a ConfigMap (key: ca.crt)."
+spec:
+  sources:
+    - secret:
+        name: "private-intermediate-ca"
+        key: "tls.crt"
+  target:
+    configMap:
+      key: "ca.crt"
+    namespaceSelector: {}
+{{- end }}

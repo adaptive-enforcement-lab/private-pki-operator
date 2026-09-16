@@ -1,0 +1,16 @@
+{{/*
+The private-root-ca Bundle is now created and managed dynamically by
+private-pki-operator when a PKIRotation CR is applied. The Bundle sources
+from the operator-managed staging ConfigMap (private-root-ca-trust-anchor)
+rather than from the cert-manager Secret, which is required for zero-downtime
+root CA rotation (dual-trust window protocol).
+
+Do not re-add a Bundle here. Doing so would create a duplicate cluster-scoped
+resource that conflicts with the operator-managed Bundle.
+
+Written as a Go template comment, not a plain YAML comment. Helm strips this
+block entirely at render time, so the file produces zero output. A plain YAML
+comment still renders as a non-empty manifest chunk in combined output, which
+hydration/policy-check tooling then tries to parse as a resource and fails on
+the missing kind field (policy-platform's check-chart job, confirmed 2026-08-23).
+*/}}

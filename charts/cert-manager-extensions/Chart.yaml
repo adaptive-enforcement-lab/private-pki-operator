@@ -1,0 +1,17 @@
+---
+apiVersion: v2
+appVersion: 1.15.0 # x-release-please-version
+description: Private PKI trust root — selfsigned bootstrap, root CA
+  certificate, root CA ClusterIssuer, cluster intermediate CA certificate, and
+  cluster intermediate CA ClusterIssuer
+maintainers:
+  - name: Mark Cheret
+    email: mark@cheret.de
+    url: https://cheret.tech
+name: cert-manager-extensions
+type: application
+version: 1.15.0 # x-release-please-version
+keywords:
+  - pki
+  - cert-manager
+  - tls

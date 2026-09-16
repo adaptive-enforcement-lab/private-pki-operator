@@ -1,0 +1,31 @@
+suite: ClusterIssuer / private-root-ca
+templates:
+  - features/root-ca/cluster-issuer-root-ca.yaml
+tests:
+  - it: renders a ClusterIssuer
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterIssuer
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: private-root-ca
+  - it: references the hardcoded root CA secret
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.ca.secretName
+          value: private-root-ca
+  - it: carries the environment label
+    set:
+      labels.environment: dev
+    asserts:
+      - equal:
+          path: metadata.labels.environment
+          value: dev

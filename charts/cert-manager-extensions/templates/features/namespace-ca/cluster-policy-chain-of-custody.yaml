@@ -1,0 +1,99 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-namespace-ca-chain-of-custody
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Namespace Intermediate CA Chain of Custody
+    policies.kyverno.io/category: PKI
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Certificate, Issuer
+    policies.kyverno.io/description: >-
+      Rooting and naming alone don't prove a namespace intermediate CA came from the
+      sanctioned generator (pki-platform#328/#340) -- a hand-written Certificate/Issuer can
+      match the shape without going through it. Scoped to namespaces carrying the
+      {{ .Values.pki.namespaceCA.label }} label only -- a deliberate non-goal is a
+      full-estate sweep of namespaces this rollout never touched (e.g. chaos-mesh,
+      rabbitmq), which also hand-roll a namespace CA off ClusterIssuer/private-intermediate-ca
+      but were never asked to route through this generator. Within scope, rejects (Audit)
+      any Certificate issued directly off ClusterIssuer/private-intermediate-ca unless it is
+      the sanctioned, Kyverno-generated <namespace>-intermediate-ca, and any Issuer named
+      <namespace>-ca unless it too was Kyverno-generated. A namespace may still add its own
+      additional intermediate(s) beneath its sanctioned namespace CA -- those reference
+      the namespace Issuer, not the ClusterIssuer, so this policy does not see them as
+      skipping the namespace CA.
+spec:
+  validationFailureAction: {{ .Values.pki.namespaceCA.chainOfCustody.validationFailureAction }}
+  background: true
+  rules:
+    - name: namespace-ca-certificate-must-be-generated
+      match:
+        any:
+          - resources:
+              kinds:
+                - cert-manager.io/*/Certificate
+              namespaceSelector:
+                matchLabels:
+                  {{ .Values.pki.namespaceCA.label }}: "true"
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.spec.issuerRef.kind || 'Issuer' {{ "}}" }}"
+            operator: Equals
+            value: ClusterIssuer
+      validate:
+        message: >
+          Certificate '{{ "{{" }} request.object.metadata.name {{ "}}" }}' in namespace
+          '{{ "{{" }} request.namespace {{ "}}" }}' is issued directly off ClusterIssuer
+          '{{ "{{" }} request.object.spec.issuerRef.name {{ "}}" }}', skipping the sanctioned
+          namespace intermediate CA. Only the generate-namespace-intermediate-ca ClusterPolicy
+          (pki-platform#351) may produce a Certificate issued directly off the cluster
+          intermediate; every other Certificate in this namespace must chain through
+          Issuer/{{ "{{" }} request.namespace {{ "}}" }}-ca instead.
+        deny:
+          conditions:
+            any:
+              - key: "{{ "{{" }} request.object.metadata.name {{ "}}" }}"
+                operator: NotEquals
+                value: "{{ "{{" }} request.namespace {{ "}}" }}-intermediate-ca"
+              - key: "{{ "{{" }} request.object.metadata.labels.\"generate.kyverno.io/policy-name\" || '' {{ "}}" }}"
+                operator: NotEquals
+                value: generate-namespace-intermediate-ca
+    - name: namespace-ca-issuer-must-be-generated
+      match:
+        any:
+          - resources:
+              kinds:
+                - Issuer
+              namespaceSelector:
+                matchLabels:
+                  {{ .Values.pki.namespaceCA.label }}: "true"
+                matchExpressions:
+                  - key: kubernetes.io/metadata.name
+                    operator: NotIn
+                    values:
+                      - cert-manager
+      preconditions:
+        all:
+          - key: "{{ "{{" }} request.object.metadata.name {{ "}}" }}"
+            operator: Equals
+            value: "{{ "{{" }} request.namespace {{ "}}" }}-ca"
+      validate:
+        message: >
+          Issuer '{{ "{{" }} request.object.metadata.name {{ "}}" }}' in namespace
+          '{{ "{{" }} request.namespace {{ "}}" }}' uses the sanctioned namespace CA name but
+          was not produced by the generate-namespace-intermediate-ca ClusterPolicy
+          (pki-platform#351). A hand-rolled Issuer at this name is off-contract even if
+          correctly shaped -- let the generator own it instead.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} request.object.metadata.labels.\"generate.kyverno.io/policy-name\" || '' {{ "}}" }}"
+                operator: NotEquals
+                value: generate-namespace-intermediate-ca

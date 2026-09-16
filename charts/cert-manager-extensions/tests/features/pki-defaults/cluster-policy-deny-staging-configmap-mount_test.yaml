@@ -1,0 +1,98 @@
+suite: ClusterPolicy / pki-deny-staging-configmap-mount
+templates:
+  - features/pki-defaults/cluster-policy-deny-staging-configmap-mount.yaml
+tests:
+  - it: renders a ClusterPolicy
+    set:
+      labels.environment: qac
+    asserts:
+      - isKind:
+          of: ClusterPolicy
+
+  - it: has the correct name
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: metadata.name
+          value: pki-deny-staging-configmap-mount
+
+  - it: defaults to Audit mode
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Audit
+
+  - it: renders Enforce when explicitly set
+    set:
+      labels.environment: qac
+      pki.policies.denyStaging.validationFailureAction: Enforce
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Enforce
+
+  - it: renders Audit when explicitly set
+    set:
+      labels.environment: qac
+      pki.policies.denyStaging.validationFailureAction: Audit
+    asserts:
+      - equal:
+          path: spec.validationFailureAction
+          value: Audit
+
+  - it: runs background scans
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.background
+          value: true
+
+  - it: targets Pod resources
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].match.any[0].resources.kinds[0]
+          value: Pod
+
+  - it: excludes cert-manager namespace
+    set:
+      labels.environment: qac
+    asserts:
+      - contains:
+          path: spec.rules[0].exclude.any[0].resources.namespaces
+          content: cert-manager
+
+  - it: denies on direct configMap volume mount
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[0].operator
+          value: GreaterThan
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[0].value
+          value: 0
+
+  - it: denies on projected configMap source mount
+    set:
+      labels.environment: qac
+    asserts:
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[1].operator
+          value: GreaterThan
+      - equal:
+          path: spec.rules[0].validate.deny.conditions.any[1].value
+          value: 0
+
+  - it: renders no resources when policies disabled
+    set:
+      labels.environment: qac
+      pki.policies.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

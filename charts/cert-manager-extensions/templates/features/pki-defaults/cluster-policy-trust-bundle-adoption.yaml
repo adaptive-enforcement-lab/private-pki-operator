@@ -1,0 +1,58 @@
+{{- if .Values.pki.policies.enabled }}
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pki-trust-bundle-adoption
+  labels:
+    {{- include "cert-manager-extensions.labels" . | nindent 4 }}
+  annotations:
+    description: "Audit: Namespaces with cert-manager-issued certificates should have at least one pod consuming the private-root-ca trust bundle ConfigMap. Namespaces that do not adopt the bundle will break when the root CA key rotates."
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: namespace-should-consume-root-ca-bundle
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              names:
+                - cert-manager
+                - kube-system
+                - kube-public
+                - kube-node-lease
+      context:
+        - name: certCount
+          apiCall:
+            urlPath: "/apis/cert-manager.io/v1/namespaces/{{ "{{" }} request.object.metadata.name {{ "}}" }}/certificates"
+            jmesPath: "items | length(@)"
+        - name: bundleConsumerCount
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{ "{{" }} request.object.metadata.name {{ "}}" }}/pods"
+            jmesPath: "items[?spec.volumes[?configMap.name == 'private-root-ca']] | length(@)"
+      preconditions:
+        all:
+          - key: "{{ "{{" }} certCount {{ "}}" }}"
+            operator: GreaterThan
+            value: 0
+      validate:
+        message: >
+          Namespace '{{ "{{" }} request.object.metadata.name {{ "}}" }}' has {{ "{{" }} certCount {{ "}}" }}
+          cert-manager Certificate(s) but no pods consume the 'private-root-ca' trust bundle.
+          Mount the 'private-root-ca' ConfigMap in workloads that verify TLS connections
+          against the platform PKI. Without this, workloads will break when the root CA
+          key rotates. See the user guide for the adoption pattern.
+        deny:
+          conditions:
+            all:
+              - key: "{{ "{{" }} bundleConsumerCount {{ "}}" }}"
+                operator: Equals
+                value: 0
+{{- end }}

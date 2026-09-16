@@ -1,0 +1,18 @@
+apiVersion: v2
+name: private-pki-operator
+description: >-
+  Kubernetes operator that automates root CA rotation for a cert-manager +
+  trust-manager PKI hierarchy. Implements a dual-trust window state machine
+  (Idle → PreservingOldRoot → DualTrustActive → AwaitingReissuance →
+  VerifyingChain → Complete) to ensure zero-gap trust during CA key rollover.
+type: application
+version: 0.1.21 # x-release-please-version
+appVersion: 0.1.21 # x-release-please-version
+maintainers:
+  - email: mark@cheret.de
+    name: Mark Cheret
+keywords:
+  - pki
+  - cert-manager
+  - trust-manager
+  - ca-rotation

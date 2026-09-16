@@ -1,0 +1,71 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: private-pki-operator
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: private-pki-operator
+  template:
+    metadata:
+      labels:
+        app: private-pki-operator
+        app.kubernetes.io/name: private-pki-operator
+    spec:
+      serviceAccountName: private-pki-operator
+      terminationGracePeriodSeconds: 10
+      securityContext:
+        # Pod-level takes only the fields Kubernetes accepts there; the rest are
+        # container-only and are applied below from the same single source.
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        seccompProfile:
+          {{- toYaml .Values.securityContext.seccompProfile | nindent 10 }}
+      containers:
+      - name: manager
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: Always
+        args:
+          - --leader-elect
+          - --health-probe-bind-address=:8081
+          {{- if .Values.metrics.bindAddress }}
+          - --metrics-bind-address={{ .Values.metrics.bindAddress }}
+          - --metrics-secure={{ .Values.metrics.secure }}
+          {{- end }}
+        {{- if .Values.metrics.bindAddress }}
+        ports:
+          # Named so the PodMonitoring can select the port by name rather than number,
+          # which keeps the scrape config correct if the port is ever moved.
+          - name: metrics
+            containerPort: {{ .Values.metrics.port }}
+            protocol: TCP
+        {{- else }}
+        ports: []
+        {{- end }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8081
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        resources:
+          requests:
+            cpu: {{ .Values.resources.requests.cpu }}
+            memory: {{ .Values.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.resources.limits.cpu }}
+            memory: {{ .Values.resources.limits.memory }}

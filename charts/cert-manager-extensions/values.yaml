@@ -1,0 +1,59 @@
+---
+################################################################
+### PKI Root CA Configuration                                ###
+################################################################
+pki:
+  rootCA:
+    # -- Root CA certificate validity duration (ISO 8601 duration string)
+    # Default: 2 years. Root lives online in a Kubernetes Secret and renews automatically —
+    # shorter validity bounds blast radius without any operational cost.
+    validity: "17520h"
+    # -- How long before expiry cert-manager begins attempting renewal
+    renewBefore: "720h"
+  intermediateCA:
+    # -- Cluster intermediate CA validity duration (ISO 8601 duration string)
+    # Default: 90 days. Short-lived; cert-manager renews automatically.
+    validity: "2160h"
+    # -- How long before expiry cert-manager begins attempting renewal
+    renewBefore: "168h"
+  policies:
+    # -- Deploy Kyverno audit ClusterPolicies for PKI compliance observability.
+    # Requires Kyverno to be installed in the cluster.
+    enabled: true
+    denyStaging:
+      # -- Kyverno validationFailureAction for pki-deny-staging-configmap-mount.
+      # Audit: log violations without blocking (safe default for rollout).
+      # Enforce: block pods that mount the staging trust-anchor ConfigMap.
+      validationFailureAction: Audit
+  trustManager:
+    # -- Deploy the private-intermediate-ca trust-manager Bundle.
+    # When true, trust-manager distributes the intermediate CA certificate to
+    # all namespaces as a ConfigMap (key: ca.crt).
+    # Note: the private-root-ca Bundle is operator-managed (not chart-managed).
+    enabled: true
+  namespaceCA:
+    # -- Namespace-scoped intermediate CA generation (Certificate + Issuer) for any
+    # namespace carrying the label below, plus chain-of-custody enforcement. Always on
+    # -- pki-platform#328/#351/#340. Requires Kyverno installed in the cluster.
+    # -- The namespace label this policy treats as its opt-in trigger. Closed boolean set:
+    # only the value "true" is accepted.
+    label: pki-managed
+    # -- Namespace intermediate CA validity duration (ISO 8601 duration string).
+    # Default: 90 days, matching pki.intermediateCA. Short-lived; cert-manager renews
+    # automatically.
+    validity: "2160h"
+    # -- How long before expiry cert-manager begins attempting renewal
+    renewBefore: "168h"
+    chainOfCustody:
+      # -- Kyverno validationFailureAction for pki-namespace-ca-chain-of-custody. Audit only:
+      # do not set to Enforce until pki-platform#353 confirms the backfill is clean across
+      # all 5 PKI-managed namespaces; the flip itself is a separate, explicit decision.
+      validationFailureAction: Audit
+################################################################
+### Labels Configuration                                      ###
+################################################################
+labels:
+  # -- Component label
+  component: pki
+  # -- Environment label
+  environment: ""
