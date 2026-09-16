@@ -1,0 +1,42 @@
+---
+# See LICENSE.md.
+#
+# Set sensible line length limits for better readability
+MD013:
+  code_block_line_length: 300
+  heading_line_length: 200
+  line_length: 300
+  tables: false
+# Do not flag hard tabs inside code blocks — Go source code uses tabs by convention
+MD010:
+  code_blocks: false
+# Disallow headings without surrounding blank lines for templates
+MD022: true
+# Allow headings to be indented for template structures
+MD023: false
+# Allow duplicate headings in different sections (for changelogs)
+MD024:
+  siblings_only: true
+# Allow fenced code blocks without surrounding blank lines
+MD031: false
+# Allow lists without surrounding blank lines for compact templates
+MD032: false
+# Allow raw HTML/XML for instruction templates and metadata
+MD033: false
+# Disallow bare URLs in documentation
+MD034: true
+# Disallow emphasis as headings
+MD036: true
+# Allow fenced code blocks without language specification
+MD040: false
+# Disable newline at end of file requirement
+MD047: false
+# Ordered list prefix — docs use sequential continuation numbering (1. 2. 3.)
+# which markdownlint reads as separate lists each expected to start at 1.
+MD029: false
+# Anchor fragment validation — MkDocs uses toc separator "_" (underscores)
+# while markdownlint validates fragments against GFM-style hyphen anchors.
+# Fragment correctness is enforced by mkdocs build --strict instead.
+MD051: false
+# Disable table column style - existing tables use various styles
+MD060: false

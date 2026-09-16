@@ -1,0 +1,259 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.0
+  name: pkirotations.platform.adaptive-enforcement-lab.com
+spec:
+  group: platform.adaptive-enforcement-lab.com
+  names:
+    kind: PKIRotation
+    listKind: PKIRotationList
+    plural: pkirotations
+    shortNames:
+    - pkir
+    singular: pkirotation
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.phase
+      name: Phase
+      type: string
+    - jsonPath: .status.currentSKID
+      name: Current SKID
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          PKIRotation manages the safe rotation of a root CA certificate within a
+          cert-manager + trust-manager PKI hierarchy. It implements a dual-trust
+          window state machine that ensures the old root CA remains trusted until
+          all intermediate CAs have been re-issued against the new root.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the root CA and trust bundle to manage.
+            properties:
+              intermediateCA:
+                description: |-
+                  intermediateCA identifies the cert-manager Certificate representing the
+                  intermediate CA this CR manages. Required when role=IntermediateCA.
+                properties:
+                  certificateName:
+                    description: certificateName is the name of the cert-manager Certificate
+                      object.
+                    minLength: 1
+                    type: string
+                  certificateNamespace:
+                    description: certificateNamespace is the namespace of the cert-manager
+                      Certificate object.
+                    minLength: 1
+                    type: string
+                required:
+                - certificateName
+                - certificateNamespace
+                type: object
+              reissuanceTimeout:
+                default: 15m
+                description: |-
+                  reissuanceTimeout is the maximum duration the operator will wait for
+                  cert-manager to complete intermediate CA re-issuance before emitting a
+                  Warning event. The operator does not abort; it continues waiting.
+                  Defaults to 15m.
+                type: string
+              role:
+                default: RootCA
+                description: |-
+                  role determines which phases of the state machine apply.
+                  RootCA (default) runs the full rotation including dual-trust window.
+                  IntermediateCA runs cascade-only: AwaitingReissuance → VerifyingChain.
+                  IntermediateCA CRs are auto-created by the operator; do not declare them manually.
+                enum:
+                - RootCA
+                - IntermediateCA
+                type: string
+              rootCA:
+                description: |-
+                  rootCA identifies the cert-manager Certificate representing the root CA
+                  whose rotation lifecycle this resource manages.
+                properties:
+                  certificateName:
+                    description: certificateName is the name of the cert-manager Certificate
+                      object.
+                    minLength: 1
+                    type: string
+                  certificateNamespace:
+                    description: certificateNamespace is the namespace of the cert-manager
+                      Certificate object.
+                    minLength: 1
+                    type: string
+                required:
+                - certificateName
+                - certificateNamespace
+                type: object
+              trustBundle:
+                description: |-
+                  trustBundle identifies the trust-manager Bundle and staging ConfigMap
+                  to manage during rotation. The Bundle must already source from the
+                  staging ConfigMap before the operator takes effect.
+                properties:
+                  name:
+                    description: name is the name of the trust-manager Bundle resource
+                      (cluster-scoped).
+                    minLength: 1
+                    type: string
+                  stagingConfigMap:
+                    description: |-
+                      stagingConfigMap is the separately curated ConfigMap that the Bundle
+                      sources from. The operator writes root CA PEM(s) here during rotation.
+                    properties:
+                      name:
+                        description: name is the name of the staging ConfigMap.
+                        minLength: 1
+                        type: string
+                      namespace:
+                        description: |-
+                          namespace is the namespace of the staging ConfigMap. This must be the
+                          trust-manager trust namespace (typically cert-manager).
+                        minLength: 1
+                        type: string
+                    required:
+                    - name
+                    - namespace
+                    type: object
+                required:
+                - name
+                - stagingConfigMap
+                type: object
+            required:
+            - rootCA
+            - trustBundle
+            type: object
+          status:
+            description: status reflects the observed rotation state.
+            properties:
+              conditions:
+                description: conditions reflect granular sub-state for each phase
+                  gate.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              currentSKID:
+                description: |-
+                  currentSKID is the Subject Key Identifier of the CA certificate
+                  currently present in the staging ConfigMap (post-rotation value once Complete).
+                type: string
+              dualTrustActiveAt:
+                description: |-
+                  dualTrustActiveAt records when the operator entered the DualTrustActive phase.
+                  Cleared when rotation completes.
+                format: date-time
+                type: string
+              lastTransitionTime:
+                description: lastTransitionTime records when the phase last changed.
+                format: date-time
+                type: string
+              phase:
+                description: phase is the current state of the rotation state machine.
+                enum:
+                - Idle
+                - PreservingOldRoot
+                - DualTrustActive
+                - AwaitingReissuance
+                - VerifyingChain
+                - Complete
+                type: string
+              previousSKID:
+                description: |-
+                  previousSKID is the Subject Key Identifier of the CA certificate
+                  that was active when the rotation began. Cleared when rotation completes.
+                type: string
+              rotationStartedAt:
+                description: rotationStartedAt records when the current rotation cycle
+                  began.
+                format: date-time
+                type: string
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

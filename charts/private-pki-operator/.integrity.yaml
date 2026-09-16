@@ -1,0 +1,27 @@
+---
+# Integrity expectations for private-pki-operator.
+#
+# The counts below are declared, not derived: `helm integrity` renders the chart
+# and fails when reality diverges. That is the point — a template silently
+# dropping out of the render, or a resource appearing that nobody intended, shows
+# up as a diff against these numbers rather than as a surprise in a cluster.
+dry:
+  templates:
+    # Every .yaml under templates/, including the CRD. One resource per file.
+    yamlFiles: 15
+    tplHelpers: 0
+  # A STATIC WALK of templates/, not a render: every ^kind: line in the chart's
+  # source, counted once per declaration regardless of the {{- if }} guarding it.
+  resources:
+    CustomResourceDefinition: 1
+    ServiceAccount: 1
+    ClusterRole: 1
+    ClusterRoleBinding: 1
+    Role: 4
+    RoleBinding: 4
+    Deployment: 1
+    PodMonitor: 1
+    PKIRotation: 1
+# No hydration section: the actual deploy values live in the consuming
+# cluster's own repo (e.g. homelab's k8s/private-pki-operator/values.yaml),
+# not here, so this repo can't render against them to test for drift.

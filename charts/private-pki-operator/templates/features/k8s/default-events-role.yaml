@@ -1,0 +1,16 @@
+---
+# PKIRotation is a cluster-scoped CRD. controller-runtime emits Events for
+# cluster-scoped objects into the "default" namespace (the Kubernetes convention
+# for objects with no namespace). This Role scopes the Events permission to that
+# one namespace rather than granting it cluster-wide via the ClusterRole.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: private-pki-operator-events
+  namespace: default
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+rules:
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch]

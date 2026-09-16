@@ -1,0 +1,67 @@
+---
+# Prometheus scrapes pods directly, so the selector must match the
+# Deployment's own pod label and the endpoint must name the container port. There is
+# deliberately no Service in front of the metrics port.
+suite: test private-pki-operator PodMonitor
+templates:
+  - templates/features/k8s/podmonitoring.yaml
+tests:
+  - it: should render when metrics and podMonitoring are enabled
+    set:
+      metrics:
+        bindAddress: :8080
+        podMonitoring:
+          enabled: true
+          interval: 60s
+    asserts:
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: apiVersion
+          value: monitoring.coreos.com/v1
+      - equal:
+          path: metadata.name
+          value: private-pki-operator
+
+  - it: should select the operator pods and scrape the named metrics port
+    set:
+      metrics:
+        bindAddress: :8080
+        podMonitoring:
+          enabled: true
+          interval: 60s
+    asserts:
+      - equal:
+          path: spec.selector.matchLabels.app
+          value: private-pki-operator
+      - equal:
+          path: spec.podMetricsEndpoints[0].port
+          value: metrics
+      - equal:
+          path: spec.podMetricsEndpoints[0].path
+          value: /metrics
+      - equal:
+          path: spec.podMetricsEndpoints[0].interval
+          value: 60s
+
+  # A PodMonitor pointing at a disabled endpoint would report a permanently
+  # down scrape target, which is worse than no target at all.
+  - it: should NOT render when the metrics endpoint is disabled
+    set:
+      metrics:
+        bindAddress: ""
+        podMonitoring:
+          enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should NOT render when podMonitoring is disabled
+    set:
+      metrics:
+        bindAddress: :8080
+        podMonitoring:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

@@ -1,0 +1,19 @@
+{{- if .Values.pkirotation.enabled }}
+---
+apiVersion: platform.adaptive-enforcement-lab.com/v1alpha1
+kind: PKIRotation
+metadata:
+  name: platform-root-ca
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+spec:
+  rootCA:
+    certificateName: {{ .Values.pkirotation.rootCA.certificateName }}
+    certificateNamespace: {{ .Values.pkirotation.rootCA.certificateNamespace }}
+  trustBundle:
+    name: {{ .Values.pkirotation.trustBundle.name }}
+    stagingConfigMap:
+      name: {{ .Values.pkirotation.trustBundle.stagingConfigMap.name }}
+      namespace: {{ .Values.pkirotation.trustBundle.stagingConfigMap.namespace }}
+  reissuanceTimeout: {{ .Values.pkirotation.reissuanceTimeout }}
+{{- end }}

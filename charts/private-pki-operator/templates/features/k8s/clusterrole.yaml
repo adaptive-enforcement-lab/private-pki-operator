@@ -1,0 +1,48 @@
+---
+# ClusterRole: cluster-scoped resources plus Certificates (all namespaces).
+# Certificates are watched cluster-wide so the operator can discover and
+# trigger re-issuance of namespace-scoped intermediate CAs during rotation.
+# Namespace-scoped Secrets, ConfigMaps, and CertificateRequests live in
+# role.yaml (cert-manager namespace only).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: private-pki-operator
+  labels:
+    app.kubernetes.io/name: private-pki-operator
+rules:
+- apiGroups: [cert-manager.io]
+  resources: [clusterissuers]
+  verbs: [get, list, watch]
+# Issuers are watched cluster-wide so the operator can discover namespace-scoped
+# Issuers backed by intermediate CA Secrets at any chain depth (BFS discovery).
+- apiGroups: [cert-manager.io]
+  resources: [issuers]
+  verbs: [get, list, watch]
+# Secrets are watched cluster-wide: intermediate CA Secrets live in any namespace
+# (any workload namespace). The Secret watch triggers
+# independent-intermediate-rotation detection regardless of namespace.
+# get/list/watch needed for the cluster-wide cache informer.
+- apiGroups: [""]
+  resources: [secrets]
+  verbs: [get, list, watch]
+# Certificates are managed cluster-wide: the operator discovers namespace
+# intermediate CAs (tier-2) and triggers their re-issuance during rotation.
+- apiGroups: [cert-manager.io]
+  resources: [certificates]
+  verbs: [get, list, watch, patch]
+- apiGroups: [cert-manager.io]
+  resources: [certificates/status]
+  verbs: [patch]
+- apiGroups: [platform.adaptive-enforcement-lab.com]
+  resources: [pkirotations]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: [platform.adaptive-enforcement-lab.com]
+  resources: [pkirotations/finalizers]
+  verbs: [update]
+- apiGroups: [platform.adaptive-enforcement-lab.com]
+  resources: [pkirotations/status]
+  verbs: [get, patch, update]
+- apiGroups: [trust.cert-manager.io]
+  resources: [bundles]
+  verbs: [get, list, watch, create, patch]

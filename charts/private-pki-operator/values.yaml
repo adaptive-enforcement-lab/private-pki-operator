@@ -1,0 +1,140 @@
+---
+# -- Install CRDs as part of chart deployment.
+# Set to false if CRDs are managed externally (e.g. by another tool or chart).
+installCRDs: true
+
+# -- Namespace for the operator itself (must be the trust-manager trust namespace).
+namespace: cert-manager
+
+image:
+  # -- Operator image repository. Built and pushed via `make build-push` in
+  # ci/private-pki-operator (see its Makefile).
+  repository: ghcr.io/adaptive-enforcement-lab/private-pki-operator
+  # -- Image tag. appVersion tracks the chart's own version, not the operator's
+  # — it is NOT a valid image tag. Set this explicitly in the consuming cluster's own values file.
+  tag: ""
+
+# Private GHCR package. GitHub Apps and OAuth Apps cannot authenticate to
+# GHCR — a classic PAT is the only working credential type. Consumed by
+# templates/features/k8s/ghcr-pull-secret.yaml, which builds a
+# kubernetes.io/dockerconfigjson Secret from the raw token via ESO's
+# target.template, referenced from the Deployment's imagePullSecrets.
+ghcr:
+  username: markcheret
+  pullTokenSecretPath: homelab/content-machine/ghcr-pull-token
+
+# Operator metrics endpoint and its Google Managed Prometheus scrape config.
+# The operator's own default for --metrics-bind-address is "0", which disables the
+# metrics server entirely, so it must be set here or the pkirotation_* collectors
+# are unreachable and the rotation state machine is unobservable.
+metrics:
+  # -- Address the metrics endpoint binds to. Set to "0" to disable the metrics server.
+  bindAddress: :8080
+  # -- Serve metrics over HTTPS with Kubernetes authn/authz filtering. Left false: the
+  # endpoint is reachable only from inside the cluster, and enabling it additionally
+  # requires TokenReview/SubjectAccessReview RBAC and scrape-side TLS trust, which this
+  # chart does not yet wire up.
+  secure: false
+  # -- Container port exposed for the metrics endpoint. Must match the port in bindAddress.
+  port: 8080
+  podMonitoring:
+    # -- Create a prometheus-operator PodMonitor resource to scrape the metrics
+    # endpoint. Prometheus scrapes pods directly, so no Service is needed in
+    # front of the port.
+    enabled: true
+    # -- Scrape interval for the operator metrics endpoint. Rotations are minutes-long
+    # state machines, so a sub-minute interval buys nothing and costs samples.
+    interval: 60s
+
+# The hardened platform baseline, surfaced as values rather than buried in the
+# Deployment template. It was already enforced there and could not be seen,
+# overridden, or justified from values.yaml — so an operator auditing the posture
+# had to read templates, and any environment needing a documented exception had
+# nowhere to record it.
+#
+# One flat block, applied at both levels by the Deployment: every field here is
+# valid on a container securityContext, and the pod-level context takes the
+# subset Kubernetes accepts there. Splitting the values into pod and container
+# halves was tried and rejected — it invites the two to drift, and the drift
+# would be silent.
+securityContext:
+  # -- Refuse to start as UID 0. The operator needs no root capability; it reads
+  # Secrets and patches Certificates through the API server.
+  runAsNonRoot: true
+  # -- UID to run as. 65532 is the nonroot user baked into the distroless base
+  # image (Dockerfile: USER 65532:65532); declaring it here means the manifest
+  # asserts what the image already does rather than trusting it.
+  runAsUser: 65532
+  # -- GID to run as, matching the image's group.
+  runAsGroup: 65532
+  # -- Immutable root filesystem. The operator writes nothing to disk — no cache,
+  # no temp files — so a writable filesystem would only ever serve an attacker.
+  readOnlyRootFilesystem: true
+  # -- Block setuid escalation. Nothing in the image is setuid, so this closes a
+  # door that is never used rather than constraining anything.
+  allowPrivilegeEscalation: false
+  # -- Never privileged. Stated explicitly rather than left to the default so the
+  # posture is auditable from values.yaml alone.
+  privileged: false
+  capabilities:
+    # -- Drop every Linux capability. This process makes API calls and nothing
+    # else; it needs none of them.
+    drop:
+      - ALL
+  seccompProfile:
+    # -- Seccomp profile. RuntimeDefault blocks the syscalls a controller never
+    # issues, which is the cheapest real reduction in kernel attack surface here.
+    type: RuntimeDefault
+
+resources:
+  requests:
+    # -- CPU request. The operator is idle almost all the time — it reconciles on
+    # Secret and Certificate events, not on a timer — so the request is sized for
+    # scheduling rather than for throughput.
+    cpu: 10m
+    # -- Memory request. Sized for the informer caches, which hold Certificates and
+    # Secrets cluster-wide and dominate the footprint.
+    memory: 64Mi
+  limits:
+    # -- CPU limit. Headroom for a rotation cascade, which walks the whole
+    # certificate tree in a burst.
+    cpu: 500m
+    # -- Memory limit. Deliberately close to the request: a cache that grows past
+    # this indicates the watch set has expanded unexpectedly, and failing loudly
+    # beats silently consuming the node.
+    memory: 128Mi
+
+# PKIRotation CR — enable to register the rotation watcher for the platform root CA.
+# The operator creates the staging ConfigMap and trust-manager Bundle automatically
+# on first reconcile. No manual pre-population is required.
+pkirotation:
+  # -- Register the rotation watcher for the platform root CA. Off by default so
+  # the chart can be installed without taking ownership of a cluster's trust root;
+  # enable it through the consuming cluster's own values file.
+  enabled: false
+  rootCA:
+    # -- Name of the cert-manager Certificate representing the root CA.
+    certificateName: private-root-ca
+    # -- Namespace of the root CA Certificate (always cert-manager for platform PKI).
+    certificateNamespace: cert-manager
+  trustBundle:
+    # -- Name of the cluster-scoped trust-manager Bundle resource.
+    name: private-root-ca
+    stagingConfigMap:
+      # -- Name of the staging ConfigMap the operator manages. Must NOT be the
+      # cert-manager-managed Secret — this ConfigMap is owned by the operator.
+      name: private-root-ca-trust-anchor
+      # -- Namespace of the staging ConfigMap (trust-manager trust namespace).
+      namespace: cert-manager
+  # -- Maximum time to wait for intermediate CA re-issuance before emitting a Warning.
+  reissuanceTimeout: 15m
+
+# Trust bundle ConfigMap names distributed to the operator's own namespace by
+# trust-manager. The Role in role.yaml restricts get access to exactly these names.
+trustBundle:
+  # -- ConfigMap holding the root CA bundle distributed by trust-manager.
+  rootCAConfigMap: private-root-ca
+  # -- ConfigMap holding the intermediate CA bundle distributed by trust-manager.
+  intermediateCAConfigMap: private-intermediate-ca
+
+# probe

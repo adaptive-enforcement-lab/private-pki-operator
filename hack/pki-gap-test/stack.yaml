@@ -1,0 +1,168 @@
+---
+# PKI Gap Test Stack
+#
+# An unmanaged 4-tier chain with rotationPolicy: Always on every cert.
+# Used to prove exactly where cert-manager stops and the operator gap begins.
+#
+# Chain:
+#   SelfSigned Issuer
+#   └── test-platform-root-ca         (Certificate + CA Issuer)
+#       └── test-platform-intermediate-ca   (Certificate + CA Issuer)
+#           └── test-namespace-intermediate-ca  (Certificate + CA Issuer, tier-2 like chaos-mesh-ca)
+#               └── test-leaf                       (Certificate)
+#
+# No operator. No ArgoCD. No GCP TrustConfig. Pure cert-manager behaviour.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pki-gap-test
+  labels:
+    purpose: pki-gap-test
+---
+# Tier 0: Self-signed issuer (root of trust bootstrap)
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned
+  namespace: pki-gap-test
+spec:
+  selfSigned: {}
+---
+# Tier 1: Platform root CA
+# rotationPolicy: Always → cert-manager generates a new private key on every renewal.
+# This is exactly what our production root CA does.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-platform-root-ca
+  namespace: pki-gap-test
+  annotations:
+    pki-gap-test/tier: "1-root"
+spec:
+  isCA: true
+  commonName: "Test Platform Root CA"
+  subject:
+    organizations:
+      - "Adaptive Enforcement Lab"
+  secretName: test-platform-root-ca
+  duration: 2h
+  renewBefore: 1h55m
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: selfsigned
+    kind: Issuer
+    group: cert-manager.io
+---
+# Issuer backed by root CA — what the platform intermediate uses
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: test-platform-root-ca
+  namespace: pki-gap-test
+spec:
+  ca:
+    secretName: test-platform-root-ca
+---
+# Tier 2: Platform intermediate CA
+# Signed by root CA. Mirrors private-intermediate-ca in production.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-platform-intermediate-ca
+  namespace: pki-gap-test
+  annotations:
+    pki-gap-test/tier: "2-platform-intermediate"
+spec:
+  isCA: true
+  commonName: "Test Platform Intermediate CA"
+  subject:
+    organizations:
+      - "Adaptive Enforcement Lab"
+  secretName: test-platform-intermediate-ca
+  duration: 1h
+  renewBefore: 55m
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: test-platform-root-ca
+    kind: Issuer
+    group: cert-manager.io
+---
+# Issuer backed by platform intermediate — what the namespace intermediate uses
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: test-platform-intermediate-ca
+  namespace: pki-gap-test
+spec:
+  ca:
+    secretName: test-platform-intermediate-ca
+---
+# Tier 3: Namespace intermediate CA (tier-2 intermediate, mirrors chaos-mesh-ca)
+# isCA=true, signed by the platform intermediate.
+# In production this is what chaos-mesh-ca, spire, etc. look like.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-namespace-intermediate-ca
+  namespace: pki-gap-test
+  annotations:
+    pki-gap-test/tier: "3-namespace-intermediate"
+spec:
+  isCA: true
+  commonName: "Test Namespace Intermediate CA"
+  subject:
+    organizations:
+      - "Adaptive Enforcement Lab"
+  secretName: test-namespace-intermediate-ca
+  duration: 1h5m
+  renewBefore: 60m
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: test-platform-intermediate-ca
+    kind: Issuer
+    group: cert-manager.io
+---
+# Issuer backed by namespace intermediate — what the leaf uses
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: test-namespace-intermediate-ca
+  namespace: pki-gap-test
+spec:
+  ca:
+    secretName: test-namespace-intermediate-ca
+---
+# Tier 4: Leaf certificate
+# Normal workload cert — mirrors a chaos-daemon-cert or mTLS leaf.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: test-leaf
+  namespace: pki-gap-test
+  annotations:
+    pki-gap-test/tier: "4-leaf"
+spec:
+  commonName: "test-leaf.pki-gap-test.svc.cluster.local"
+  dnsNames:
+    - test-leaf.pki-gap-test.svc.cluster.local
+  secretName: test-leaf
+  duration: 1h5m
+  renewBefore: 60m
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    name: test-namespace-intermediate-ca
+    kind: Issuer
+    group: cert-manager.io
