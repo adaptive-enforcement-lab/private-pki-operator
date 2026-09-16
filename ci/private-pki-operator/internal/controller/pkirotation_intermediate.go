@@ -92,7 +92,9 @@ func (r *PKIRotationReconciler) reconcileIdleIntermediate(
 		if err := r.Status().Update(ctx, pkir); err != nil {
 			return ctrl.Result{}, fmt.Errorf("updating status with intermediate CA SKID: %w", err)
 		}
-		return ctrl.Result{}, nil
+		// Children issued before this baseline may already be signed by a previous key.
+		requeue, err := r.sweepIntermediateChildren(ctx, pkir)
+		return ctrl.Result{RequeueAfter: requeue}, err
 	}
 
 	// Outcome 3: SKID unchanged — no-op, except for one repair.
@@ -115,7 +117,8 @@ func (r *PKIRotationReconciler) reconcileIdleIntermediate(
 			}
 			recordPhase(pkir)
 		}
-		return ctrl.Result{}, nil
+		requeue, err := r.sweepIntermediateChildren(ctx, pkir)
+		return ctrl.Result{RequeueAfter: requeue}, err
 	}
 
 	// Outcome 4: SKID changed — check owner before cascading.

@@ -319,6 +319,18 @@ The operator polls every 10 seconds and advances automatically when the root Sec
 
 **Same-key renewal (automatic):** If cert-manager renewed the root CA with the same key (`rotationPolicy: Never`) — a validity extension rather than a key rotation — the SKID never changes. The operator detects this: once no active CertificateRequest remains and the SKID is still unchanged, it resets to Idle with reason `SameKeyRenewal`. No manual intervention is needed. This is the normal path for automatic 2-year root CA renewals.
 
+### Children signed by a previous CA key (`StaleDownstreamReissuanceTriggered`)
+
+A cascade only runs when the operator observes a CA's SKID change. A CA that rotated before the operator was installed, or while it was down, leaves children signed by a key nothing tracks; cert-manager still reports them `Ready`, and they fail chain verification the moment the previous CA certificate expires.
+
+Every Idle `PKIRotation` (root and intermediate) therefore sweeps its **direct** children on startup and then hourly: any `Ready` child whose Secret's AKID differs from the CA's current SKID gets `Issuing=True`. Each trigger emits a Warning event `StaleDownstreamReissuanceTriggered` on the `PKIRotation` and increments `pkirotation_stale_downstream_reissued_total{role}`. Any increase means a cascade was missed and has now been repaired.
+
+```bash
+kubectl get events -A --field-selector reason=StaleDownstreamReissuanceTriggered
+```
+
+Children that are not `Ready` or are already issuing are left to cert-manager. Grandchildren are swept by their own CA's `PKIRotation`. Issuers are matched only where cert-manager actually resolves the CA Secret: an `Issuer` in the CA Certificate's namespace, or a `ClusterIssuer` when the CA lives in the root CA's namespace.
+
 ### `ChainVerified=False` after reissuance
 
 AKID/SKID mismatch — the intermediate was re-issued against the wrong issuer. This indicates a ClusterIssuer configuration problem:

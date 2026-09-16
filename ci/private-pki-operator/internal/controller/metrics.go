@@ -116,12 +116,19 @@ var (
 		Name: metricPrefix + "reissuance_timeouts_total",
 		Help: "Total rotations that exceeded spec.reissuanceTimeout waiting for cert-manager renewal.",
 	}, []string{metricLabelRole})
+
+	// pkiRotationStaleDownstreamReissuedTotal counts children found signed by a
+	// previous CA key while Idle. Any increase means a cascade was missed.
+	pkiRotationStaleDownstreamReissuedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: metricPrefix + "stale_downstream_reissued_total",
+		Help: "Total certificates re-issued because they were signed by a previous CA key.",
+	}, []string{metricLabelRole})
 )
 
 func init() {
 	metrics.Registry.MustRegister(
 		pkiRotationPhase, pkiRotationTransitionsTotal, pkiRotationDownstreamReissuedTotal, pkiRotationSKIDDriftTotal,
-		pkiRotationReissuanceTimeoutsTotal,
+		pkiRotationReissuanceTimeoutsTotal, pkiRotationStaleDownstreamReissuedTotal,
 	)
 
 	// Pre-initialise the role-partitioned counters to zero so every series exists
@@ -135,6 +142,7 @@ func init() {
 	} {
 		pkiRotationSKIDDriftTotal.WithLabelValues(role)
 		pkiRotationReissuanceTimeoutsTotal.WithLabelValues(role)
+		pkiRotationStaleDownstreamReissuedTotal.WithLabelValues(role)
 		for _, kind := range []string{downstreamKindCA, downstreamKindLeaf} {
 			pkiRotationDownstreamReissuedTotal.WithLabelValues(role, kind)
 		}
@@ -229,4 +237,12 @@ func recordReissuanceTimeout(pkir *platformv1alpha1.PKIRotation) {
 		return
 	}
 	pkiRotationReissuanceTimeoutsTotal.WithLabelValues(string(pkir.Spec.Role)).Inc()
+}
+
+// recordStaleDownstreamReissued counts children re-issued by the stale-child sweep.
+func recordStaleDownstreamReissued(pkir *platformv1alpha1.PKIRotation, count int) {
+	if pkir == nil || count == 0 {
+		return
+	}
+	pkiRotationStaleDownstreamReissuedTotal.WithLabelValues(string(pkir.Spec.Role)).Add(float64(count))
 }

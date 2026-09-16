@@ -76,7 +76,8 @@ func (r *PKIRotationReconciler) reconcileIdle(
 		if err := r.ensureIntermediateCACRs(ctx, pkir); err != nil {
 			return ctrl.Result{}, fmt.Errorf("ensuring intermediate CA CRs: %w", err)
 		}
-		return ctrl.Result{}, nil
+		requeue, err := r.sweepRootChildren(ctx, pkir)
+		return ctrl.Result{RequeueAfter: requeue}, err
 	}
 
 	// (a) SKID unchanged — check for an active CertificateRequest (rotation is starting).
@@ -96,7 +97,8 @@ func (r *PKIRotationReconciler) reconcileIdle(
 		return ctrl.Result{}, fmt.Errorf("ensuring intermediate CA CRs: %w", err)
 	}
 
-	return ctrl.Result{}, nil
+	requeue, err := r.sweepRootChildren(ctx, pkir)
+	return ctrl.Result{RequeueAfter: requeue}, err
 }
 
 // hasActiveCertificateRequest reports whether there is a pending (non-Ready)
