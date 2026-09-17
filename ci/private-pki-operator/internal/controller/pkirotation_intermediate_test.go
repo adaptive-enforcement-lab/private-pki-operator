@@ -109,7 +109,7 @@ func buildIntermediatePKIR() *platformv1alpha1.PKIRotation {
 }
 
 // TestReconcileIdleIntermediate_NoChange verifies that when the SKID is unchanged,
-// the function returns no requeue and the phase stays Idle.
+// the phase stays Idle and only the periodic stale-child sweep is scheduled.
 func TestReconcileIdleIntermediate_NoChange(t *testing.T) {
 	certPEM, skid := mustGenerateTestCA(t)
 
@@ -141,8 +141,8 @@ func TestReconcileIdleIntermediate_NoChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.RequeueAfter != 0 {
-		t.Errorf("expected no requeue, got RequeueAfter=%v", result.RequeueAfter)
+	if result.RequeueAfter != staleDownstreamSweepInterval {
+		t.Errorf("expected RequeueAfter=%v (stale-child sweep), got %v", staleDownstreamSweepInterval, result.RequeueAfter)
 	}
 	if pkir.Status.Phase != platformv1alpha1.PhaseIdle {
 		t.Errorf("expected phase Idle, got %s", pkir.Status.Phase)
@@ -150,7 +150,7 @@ func TestReconcileIdleIntermediate_NoChange(t *testing.T) {
 }
 
 // TestReconcileIdleIntermediate_FirstRun verifies that on first run (empty currentSKID),
-// the SKID is recorded in status and the phase stays Idle with no requeue.
+// the SKID is recorded in status, the phase stays Idle and the sweep is scheduled.
 func TestReconcileIdleIntermediate_FirstRun(t *testing.T) {
 	certPEM, skid := mustGenerateTestCA(t)
 
@@ -182,8 +182,9 @@ func TestReconcileIdleIntermediate_FirstRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.RequeueAfter != 0 {
-		t.Errorf("expected no requeue on first run, got RequeueAfter=%v", result.RequeueAfter)
+	if result.RequeueAfter != staleDownstreamSweepInterval {
+		t.Errorf("expected RequeueAfter=%v on first run (stale-child sweep), got %v",
+			staleDownstreamSweepInterval, result.RequeueAfter)
 	}
 	// The in-memory struct must have the SKID recorded.
 	if pkir.Status.CurrentSKID != skid {
@@ -845,7 +846,7 @@ func TestReconcileVerifyingChainIntermediate_WrongAKID_Requeues(t *testing.T) {
 // TestReconcile_IntermediateCA_RoutesToIdleIntermediate verifies that a PKIRotation
 // with spec.role=IntermediateCA in Idle phase is routed to reconcileIdleIntermediate.
 // When status.currentSKID already matches the live Secret SKID, the result must be
-// a no-op: no error, no forced requeue, phase stays Idle.
+// no transition: no error, phase stays Idle, only the sweep is scheduled.
 func TestReconcile_IntermediateCA_RoutesToIdleIntermediate(t *testing.T) {
 	certPEM, skid := mustGenerateTestCA(t)
 
@@ -877,9 +878,9 @@ func TestReconcile_IntermediateCA_RoutesToIdleIntermediate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// No-op path: SKID unchanged → no forced requeue.
-	if result.RequeueAfter != 0 {
-		t.Errorf("expected RequeueAfter=0 (no-op), got %v", result.RequeueAfter)
+	// SKID unchanged → no transition; only the periodic stale-child sweep is scheduled.
+	if result.RequeueAfter != staleDownstreamSweepInterval {
+		t.Errorf("expected RequeueAfter=%v (stale-child sweep), got %v", staleDownstreamSweepInterval, result.RequeueAfter)
 	}
 	// Phase must still be Idle.
 	if pkir.Status.Phase != platformv1alpha1.PhaseIdle {
