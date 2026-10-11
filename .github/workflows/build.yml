@@ -15,7 +15,7 @@ jobs:
       run:
         working-directory: ci/private-pki-operator
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with:
           go-version-file: ci/private-pki-operator/go.mod
@@ -27,6 +27,6 @@ jobs:
     name: Helm lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: azure/setup-helm@v4
       - run: helm lint charts/private-pki-operator
